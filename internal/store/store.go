@@ -92,6 +92,10 @@ func (s *Store) url(name string) string {
 	return strings.TrimRight(s.BaseURL, "/") + "/" + name + "/"
 }
 
+func (s *Store) URL(name string) string {
+	return s.url(name)
+}
+
 func (s *Store) List() ([]Manifest, error) {
 	entries, err := os.ReadDir(s.Root)
 	if err != nil {
@@ -125,6 +129,56 @@ func (s *Store) Remove(name string) error {
 		return fmt.Errorf("no such preview: %s", name)
 	}
 	return os.RemoveAll(dir)
+}
+
+func (s *Store) Get(name string) (Manifest, error) {
+	m, err := readManifest(filepath.Join(s.Root, name))
+	if err != nil {
+		return Manifest{}, fmt.Errorf("no such preview: %s", name)
+	}
+	return m, nil
+}
+
+func (s *Store) Pin(name string) error {
+	dir := filepath.Join(s.Root, name)
+	m, err := readManifest(dir)
+	if err != nil {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	m.Pinned = true
+	return writeManifest(dir, m)
+}
+
+func (s *Store) Extend(name string, ttl time.Duration) error {
+	dir := filepath.Join(s.Root, name)
+	m, err := readManifest(dir)
+	if err != nil {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	m.Expires = s.now().Add(ttl)
+	return writeManifest(dir, m)
+}
+
+func (s *Store) DiskUsage() (int64, error) {
+	var total int64
+	err := filepath.WalkDir(s.Root, func(_ string, d os.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		total += info.Size()
+		return nil
+	})
+	return total, err
 }
 
 func (s *Store) GC() (int, error) {

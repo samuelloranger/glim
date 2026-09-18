@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/mdp/qrterminal/v3"
 	"github.com/samuelloranger/glim/internal/caddy"
 	"github.com/samuelloranger/glim/internal/config"
 	"github.com/samuelloranger/glim/internal/install"
@@ -36,6 +38,14 @@ func main() {
 		mustRun(cmdRemove(os.Args[2:]))
 	case "gc":
 		mustRun(cmdGC())
+	case "extend":
+		mustRun(cmdExtend(os.Args[2:]))
+	case "pin":
+		mustRun(cmdPin(os.Args[2:]))
+	case "open":
+		mustRun(cmdOpen(os.Args[2:]))
+	case "status":
+		mustRun(cmdStatus())
 	case "serve":
 		mustRun(cmdServe(os.Args[2:]))
 	case "caddy":
@@ -63,6 +73,7 @@ func cmdPublish(args []string) error {
 	project := fs.String("project", "", "project name")
 	ttl := fs.Duration("ttl", cfg.TTLDuration(), "time to live, e.g. 6h, 30m")
 	local := fs.Bool("local", false, "auto-start the built-in server and use a localhost link")
+	qr := fs.Bool("qr", false, "also print a scannable QR code of the URL")
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
@@ -84,7 +95,14 @@ func cmdPublish(args []string) error {
 	}
 	fmt.Println(res.URL)
 	fmt.Fprintf(os.Stderr, "expires %s\n", res.Expires.Format(time.RFC1123))
+	if *qr {
+		writeQR(os.Stderr, res.URL)
+	}
 	return nil
+}
+
+func writeQR(w io.Writer, url string) {
+	qrterminal.GenerateHalfBlock(url, qrterminal.L, w)
 }
 
 func splitEntry(args []string) (entry string, flagArgs []string) {
@@ -127,9 +145,13 @@ func cmdList() error {
 	fmt.Fprintln(w, "NAME\tTITLE\tAGE\tEXPIRES IN")
 	now := time.Now()
 	for _, m := range list {
+		expires := short(m.Expires.Sub(now))
+		if m.Pinned {
+			expires = "pinned"
+		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 			m.Name, truncate(m.Title, 30),
-			short(now.Sub(m.Created)), short(m.Expires.Sub(now)))
+			short(now.Sub(m.Created)), expires)
 	}
 	return w.Flush()
 }
@@ -158,6 +180,105 @@ func cmdGC() error {
 	}
 	fmt.Printf("pruned %d expired preview(s)\n", n)
 	return nil
+}
+
+func cmdExtend(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: glim extend <name> <ttl>")
+	}
+	ttl, err := time.ParseDuration(args[1])
+	if err != nil {
+		return fmt.Errorf("bad ttl %q: %w", args[1], err)
+	}
+	cfg := config.Load()
+	s := store.New(cfg.Root, cfg.BaseURL())
+	if err := s.Extend(args[0], ttl); err != nil {
+		return err
+	}
+	m, err := s.Get(args[0])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s now expires %s\n", args[0], m.Expires.Format(time.RFC1123))
+	return nil
+}
+
+func cmdPin(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: glim pin <name>")
+	}
+	cfg := config.Load()
+	s := store.New(cfg.Root, cfg.BaseURL())
+	if err := s.Pin(args[0]); err != nil {
+		return err
+	}
+	fmt.Printf("pinned %s (never expires)\n", args[0])
+	return nil
+}
+
+func cmdOpen(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: glim open <name>")
+	}
+	cfg := config.Load()
+	s := store.New(cfg.Root, cfg.BaseURL())
+	if _, err := s.Get(args[0]); err != nil {
+		return err
+	}
+	url := s.URL(args[0])
+	fmt.Println(url)
+	if os.Getenv("DISPLAY") != "" {
+		if path, err := exec.LookPath("xdg-open"); err == nil {
+			_ = exec.Command(path, url).Start()
+		}
+	}
+	return nil
+}
+
+func cmdStatus() error {
+	cfg := config.Load()
+	s := store.New(cfg.Root, cfg.BaseURL())
+	list, err := s.List()
+	if err != nil {
+		return err
+	}
+	bytes, err := s.DiskUsage()
+	if err != nil {
+		return err
+	}
+	pinned := 0
+	var next time.Time
+	for _, m := range list {
+		if m.Pinned {
+			pinned++
+			continue
+		}
+		if next.IsZero() || m.Expires.Before(next) {
+			next = m.Expires
+		}
+	}
+	fmt.Printf("root:     %s\n", cfg.Root)
+	fmt.Printf("live:     %d preview(s) (%d pinned)\n", len(list), pinned)
+	fmt.Printf("disk:     %s\n", humanBytes(bytes))
+	if next.IsZero() {
+		fmt.Println("next gc:  none pending")
+	} else {
+		fmt.Printf("next gc:  %s (in %s)\n", next.Format(time.RFC1123), short(time.Until(next)))
+	}
+	return nil
+}
+
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func cmdMCP() error {
@@ -335,12 +456,14 @@ func usage() {
 	fmt.Fprint(os.Stderr, `glim — publish HTML previews and serve them behind a reverse proxy
 
 usage:
-  glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local]
+  glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local] [--qr]
                                               publish, print the URL
   glim serve [--port N] [--root DIR]          run the preview server
   glim config [--domain URL --port N ...]     show or set config
   glim caddy                                  print the reverse-proxy vhost
   glim ls | rm <name>... | gc                 manage previews
+  glim extend <name> <ttl> | pin <name>       change a preview's lifetime
+  glim open <name> | status                   open a link / show instance status
   glim mcp                                    run as MCP server
   glim install <claude|codex|cursor>          wire into an agent
   glim version

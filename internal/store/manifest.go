@@ -16,9 +16,13 @@ type Manifest struct {
 	Session string    `json:"session,omitempty"`
 	Created time.Time `json:"created"`
 	Expires time.Time `json:"expires"`
+	Pinned  bool      `json:"pinned,omitempty"`
 }
 
 func (m Manifest) Expired(now time.Time) bool {
+	if m.Pinned {
+		return false
+	}
 	return now.After(m.Expires)
 }
 
