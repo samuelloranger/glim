@@ -48,11 +48,13 @@ glim report.html --title "Quick look" --local
 ## Commands
 
 ```
-glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local]   publish, print URL
+glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local] [--qr]  publish, print URL
 glim serve [--bind ADDR] [--port N] [--root DIR]                       run the preview server
 glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h]    show or set config
 glim caddy                                                             print a reverse-proxy vhost
 glim ls | rm <name>... | gc                                           manage previews
+glim extend <name> <ttl> | pin <name>                                 change a preview's lifetime
+glim open <name> | status                                             open a link / show status
 glim mcp                                                              run as an MCP server
 glim install <claude|codex|cursor>                                    wire into an agent
 glim version
@@ -66,9 +68,9 @@ elapses; expired previews are pruned on the next command and by `glim gc`.
 
 ## Agent integration (MCP)
 
-`glim install <agent>` registers glim's MCP server (a `present` tool) and writes a
-steering rule so the agent prefers glim for previews. Supported: Claude, Codex,
-Cursor.
+`glim install <agent>` registers glim's MCP server (tools: `present`, `list`,
+`revoke`, `pin`, `extend`) and writes a steering rule so the agent prefers glim
+for previews. Supported: Claude, Codex, Cursor.
 
 ## Behind a reverse proxy
 
