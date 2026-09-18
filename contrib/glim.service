@@ -1,0 +1,11 @@
+[Unit]
+Description=glim preview server
+After=network.target
+
+[Service]
+ExecStart=%h/.local/bin/glim serve
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
