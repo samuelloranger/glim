@@ -1,0 +1,12 @@
+{
+  "name": "glim-docs",
+  "private": true,
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "cp install.sh docs/public/install.sh && vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  }
+}

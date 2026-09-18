@@ -2,3 +2,6 @@ glim
 /tmp/
 *.test
 SPEC.md
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/

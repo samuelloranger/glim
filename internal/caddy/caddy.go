@@ -4,8 +4,7 @@ import "fmt"
 
 func Snippet(host, upstream string) string {
 	return fmt.Sprintf(`%s {
-
-    reverse_proxy %s
+	reverse_proxy %s
 }
 `, host, upstream)
 }
