@@ -1,4 +1,4 @@
-name: Publish docs to example.com
+name: Publish docs
 
 on:
   push:
@@ -27,19 +27,26 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Build docs
         env:
-          GITHUB_ACTIONS: "true"
+          DOCS_BASE: ${{ secrets.DOCS_BASE }}
+          DOCS_HOSTNAME: ${{ secrets.DOCS_HOSTNAME }}
         run: bun run docs:build
-      - name: Push built docs to samlo-cloud
+      - name: Push built docs
         env:
           TOKEN: ${{ secrets.DOCS_TOKEN }}
+          REPO: ${{ secrets.DOCS_REPO }}
+          DEST: ${{ secrets.DOCS_DEST }}
         run: |
-          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/samuelloranger/samlo-cloud.git" out
-          rm -rf out/docs/glim
-          mkdir -p out/docs/glim
-          cp -r docs/.vitepress/dist/. out/docs/glim/
+          if [ -z "$TOKEN" ] || [ -z "$REPO" ] || [ -z "$DEST" ]; then
+            echo "docs publish not configured; skipping"
+            exit 0
+          fi
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${REPO}.git" out
+          rm -rf "out/${DEST}"
+          mkdir -p "out/${DEST}"
+          cp -r docs/.vitepress/dist/. "out/${DEST}/"
           cd out
-          git config user.name  "github-actions"
-          git config user.email "github-actions@example.com"
-          git add docs/glim
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${DEST}"
           git diff --cached --quiet || git commit -m "docs(glim): sync ${GITHUB_SHA::7}"
           git push

@@ -21,6 +21,6 @@ features:
     details: glim report.html --title "Diff review" copies your page into a readable slug and prints its URL. Previews auto-expire; nothing to clean up.
   - title: Runs its own server
     details: No web server to configure. glim serves previews itself — a loopback link on your laptop, or a public URL when placed behind a reverse proxy.
-  - title: Agents use it directly
-    details: An MCP present tool plus a steering rule wires glim into Claude, Codex, and Cursor, so a coding agent shows you a live preview instead of pasting raw HTML.
+  - title: Self-host your agent's artifacts
+    details: The HTML a coding agent builds stays on your own server and domain, not a vendor's. An MCP present tool plus a steering rule wires glim into Claude, Codex, and Cursor, so the agent shows you a live self-hosted preview instead of pasting raw HTML.
 ---

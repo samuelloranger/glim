@@ -1,11 +1,13 @@
 import { defineConfig } from "vitepress";
 
+const hostname = process.env.DOCS_HOSTNAME;
+
 export default defineConfig({
   lang: "en-US",
-  base: process.env.GITHUB_ACTIONS === "true" ? "/glim/" : "/",
+  base: process.env.DOCS_BASE || "/",
   title: "glim",
   description: "Publish HTML previews and get a short shareable link — CLI + MCP",
-  sitemap: { hostname: "https://example.com/glim/" },
+  ...(hostname ? { sitemap: { hostname } } : {}),
   cleanUrls: true,
   appearance: false,
   themeConfig: {

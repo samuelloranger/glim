@@ -18,6 +18,10 @@ show someone — from the command line or from a coding agent via MCP. glim runs
 own server; put it behind a reverse proxy for a public URL, or use `--local` for a
 loopback link with no proxy at all.
 
+Self-host the HTML artifacts a coding agent produces. Instead of a preview that
+lives on a vendor's servers, glim keeps every agent-generated page on your own
+infrastructure, at your own domain, under your own access controls.
+
 ## Install
 
 ```sh
