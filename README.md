@@ -1,4 +1,17 @@
-# glim
+<p align="center">
+  <img src="docs/public/icon.svg" width="96" alt="glim logo" />
+</p>
+
+<h1 align="center">glim</h1>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/samuelloranger/glim" alt="License: MIT" /></a>
+  <a href="https://github.com/samuelloranger/glim/releases"><img src="https://img.shields.io/github/v/release/samuelloranger/glim" alt="Latest release" /></a>
+  <a href="https://github.com/samuelloranger/glim/actions/workflows/ci.yml"><img src="https://github.com/samuelloranger/glim/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/samuelloranger/glim/actions/workflows/release.yml"><img src="https://github.com/samuelloranger/glim/actions/workflows/release.yml/badge.svg" alt="Release builds" /></a>
+  <img src="https://img.shields.io/badge/Go-single%20binary-00ADD8?logo=go&logoColor=white" alt="Go single binary" />
+  <a href="https://buymeacoffee.com/samlo122"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy me a coffee" /></a>
+</p>
 
 Publish a self-contained HTML file or directory and get a short, readable link to
 show someone — from the command line or from a coding agent via MCP. glim runs its
