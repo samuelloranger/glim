@@ -137,3 +137,88 @@ func TestRemoveByName(t *testing.T) {
 		t.Fatal("expected error removing unknown preview")
 	}
 }
+
+func TestPinSurvivesExpiryAndGC(t *testing.T) {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	s := newTestStore(t)
+	s.Now = func() time.Time { return base }
+	e := writeTemp(t, "a.html", "a")
+	res, _ := s.Publish(e, "keep", "", "", time.Hour)
+
+	if err := s.Pin(res.Name); err != nil {
+		t.Fatal(err)
+	}
+	s.Now = func() time.Time { return base.Add(100 * time.Hour) }
+
+	n, err := s.GC()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("GC removed %d pinned previews, want 0", n)
+	}
+	list, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || !list[0].Pinned {
+		t.Fatalf("pinned preview not live/pinned: %+v", list)
+	}
+}
+
+func TestExtendPushesExpiry(t *testing.T) {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	s := newTestStore(t)
+	s.Now = func() time.Time { return base }
+	e := writeTemp(t, "a.html", "a")
+	res, _ := s.Publish(e, "live", "", "", time.Hour)
+
+	s.Now = func() time.Time { return base.Add(30 * time.Minute) }
+	if err := s.Extend(res.Name, 2*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+
+	s.Now = func() time.Time { return base.Add(90 * time.Minute) }
+	list, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("extended preview expired early: %+v", list)
+	}
+}
+
+func TestPinExtendMissing(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.Pin("nope-abcd"); err == nil {
+		t.Fatal("want error pinning unknown preview")
+	}
+	if err := s.Extend("nope-abcd", time.Hour); err == nil {
+		t.Fatal("want error extending unknown preview")
+	}
+}
+
+func TestGetAndDiskUsage(t *testing.T) {
+	s := newTestStore(t)
+	e := writeTemp(t, "a.html", "hello world")
+	res, _ := s.Publish(e, "info", "proj", "", time.Hour)
+
+	m, err := s.Get(res.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Name != res.Name || m.Project != "proj" {
+		t.Fatalf("unexpected manifest: %+v", m)
+	}
+	if _, err := s.Get("nope-abcd"); err == nil {
+		t.Fatal("want error getting unknown preview")
+	}
+
+	n, err := s.DiskUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n <= 0 {
+		t.Fatalf("disk usage = %d, want > 0", n)
+	}
+}

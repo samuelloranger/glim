@@ -3,7 +3,7 @@
 ## publish
 
 ```sh
-glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local]
+glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local] [--qr]
 ```
 
 Copies `entry` into a new preview and prints its URL. A single file is served as
@@ -15,6 +15,7 @@ Copies `entry` into a new preview and prints its URL. A single file is served as
 | `--project` | Stored as metadata, shown in `glim ls`. |
 | `--ttl` | Lifetime, e.g. `6h`, `30m`. Defaults to the configured TTL. |
 | `--local` | Auto-start the built-in server and return a loopback link. |
+| `--qr` | Also print a scannable QR code of the URL (to stderr, so stdout stays the plain URL). |
 
 ## serve
 
@@ -54,14 +55,43 @@ glim gc                 # prune expired previews
 
 Expired previews are also pruned automatically whenever you publish.
 
+## extend · pin
+
+```sh
+glim extend <name> <ttl>   # set a new lifetime measured from now, e.g. 48h
+glim pin <name>            # never expire until removed
+```
+
+`pin` exempts a preview from TTL expiry and garbage collection; `glim ls` shows
+it as `pinned`. `extend` resets the expiry to `now + ttl`.
+
+## open
+
+```sh
+glim open <name>
+```
+
+Prints the preview's URL. If a desktop session is present (`DISPLAY` set), it
+also opens the link with `xdg-open`.
+
+## status
+
+```sh
+glim status
+```
+
+Prints the store root, the live preview count (and how many are pinned), disk
+use, and the next expiry due for garbage collection.
+
 ## mcp
 
 ```sh
 glim mcp
 ```
 
-Runs glim as an MCP server over stdio, exposing a `present` tool. Normally you do
-not call this directly — `glim install` wires it into an agent.
+Runs glim as an MCP server over stdio, exposing `present`, `list`, `revoke`,
+`pin`, and `extend` tools. Normally you do not call this directly — `glim
+install` wires it into an agent.
 
 ## install
 

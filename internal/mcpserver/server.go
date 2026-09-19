@@ -22,6 +22,98 @@ type PresentOutput struct {
 	Expires string `json:"expires" jsonschema:"RFC3339 expiry time"`
 }
 
+type ListInput struct {
+	Project string `json:"project,omitempty" jsonschema:"optional: only previews with this project"`
+}
+
+type PreviewInfo struct {
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+	Title   string `json:"title,omitempty"`
+	Project string `json:"project,omitempty"`
+	Expires string `json:"expires" jsonschema:"RFC3339 expiry time"`
+}
+
+type ListOutput struct {
+	Previews []PreviewInfo `json:"previews"`
+}
+
+type RevokeInput struct {
+	Name string `json:"name" jsonschema:"the preview slug to revoke"`
+}
+
+type RevokeOutput struct {
+	Revoked string `json:"revoked" jsonschema:"the revoked preview slug"`
+}
+
+func listPreviews(s *store.Store, in ListInput) (ListOutput, error) {
+	manifests, err := s.List()
+	if err != nil {
+		return ListOutput{}, err
+	}
+	out := ListOutput{Previews: []PreviewInfo{}}
+	for _, m := range manifests {
+		if in.Project != "" && m.Project != in.Project {
+			continue
+		}
+		out.Previews = append(out.Previews, PreviewInfo{
+			Name:    m.Name,
+			URL:     s.URL(m.Name),
+			Title:   m.Title,
+			Project: m.Project,
+			Expires: m.Expires.Format(time.RFC3339),
+		})
+	}
+	return out, nil
+}
+
+func revokePreview(s *store.Store, in RevokeInput) (RevokeOutput, error) {
+	if err := s.Remove(in.Name); err != nil {
+		return RevokeOutput{}, err
+	}
+	return RevokeOutput{Revoked: in.Name}, nil
+}
+
+type PinInput struct {
+	Name string `json:"name" jsonschema:"the preview slug to pin so it never expires"`
+}
+
+type PinOutput struct {
+	Pinned string `json:"pinned" jsonschema:"the pinned preview slug"`
+}
+
+func pinPreview(s *store.Store, in PinInput) (PinOutput, error) {
+	if err := s.Pin(in.Name); err != nil {
+		return PinOutput{}, err
+	}
+	return PinOutput{Pinned: in.Name}, nil
+}
+
+type ExtendInput struct {
+	Name string `json:"name" jsonschema:"the preview slug to extend"`
+	TTL  string `json:"ttl" jsonschema:"new lifetime from now, e.g. 6h or 30m"`
+}
+
+type ExtendOutput struct {
+	Name    string `json:"name"`
+	Expires string `json:"expires" jsonschema:"RFC3339 expiry time"`
+}
+
+func extendPreview(s *store.Store, in ExtendInput) (ExtendOutput, error) {
+	d, err := time.ParseDuration(in.TTL)
+	if err != nil {
+		return ExtendOutput{}, fmt.Errorf("bad ttl %q: %w", in.TTL, err)
+	}
+	if err := s.Extend(in.Name, d); err != nil {
+		return ExtendOutput{}, err
+	}
+	m, err := s.Get(in.Name)
+	if err != nil {
+		return ExtendOutput{}, err
+	}
+	return ExtendOutput{Name: in.Name, Expires: m.Expires.Format(time.RFC3339)}, nil
+}
+
 func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string) error {
 	server := mcp.NewServer(&mcp.Implementation{Name: "glim", Version: version}, nil)
 
@@ -49,6 +141,66 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 		Name:        "present",
 		Description: "Publish a self-contained HTML file or directory and return a short-lived link to show the user. Use this to show any visual/HTML preview instead of other preview mechanisms.",
 	}, present)
+
+	list := func(_ context.Context, _ *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, ListOutput, error) {
+		out, err := listPreviews(s, in)
+		if err != nil {
+			return nil, ListOutput{}, err
+		}
+		text := fmt.Sprintf("%d live preview(s).", len(out.Previews))
+		for _, p := range out.Previews {
+			text += "\n" + p.Name + " — " + p.URL
+		}
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
+		return result, out, nil
+	}
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list",
+		Description: "List the currently live previews this glim instance is serving (name, link, expiry), optionally filtered by project.",
+	}, list)
+
+	revoke := func(_ context.Context, _ *mcp.CallToolRequest, in RevokeInput) (*mcp.CallToolResult, RevokeOutput, error) {
+		out, err := revokePreview(s, in)
+		if err != nil {
+			return nil, RevokeOutput{}, err
+		}
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Revoked preview " + out.Revoked}}}
+		return result, out, nil
+	}
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "revoke",
+		Description: "Revoke (delete) a live preview by its slug so its link stops working immediately.",
+	}, revoke)
+
+	pin := func(_ context.Context, _ *mcp.CallToolRequest, in PinInput) (*mcp.CallToolResult, PinOutput, error) {
+		out, err := pinPreview(s, in)
+		if err != nil {
+			return nil, PinOutput{}, err
+		}
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Pinned preview " + out.Pinned + " (never expires)"}}}
+		return result, out, nil
+	}
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "pin",
+		Description: "Pin a live preview by its slug so it never expires until explicitly revoked.",
+	}, pin)
+
+	extend := func(_ context.Context, _ *mcp.CallToolRequest, in ExtendInput) (*mcp.CallToolResult, ExtendOutput, error) {
+		out, err := extendPreview(s, in)
+		if err != nil {
+			return nil, ExtendOutput{}, err
+		}
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Preview " + out.Name + " now expires " + out.Expires}}}
+		return result, out, nil
+	}
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "extend",
+		Description: "Extend a live preview's lifetime, setting a new TTL measured from now.",
+	}, extend)
 
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
