@@ -33,7 +33,7 @@ type PublishResult struct {
 	Expires time.Time
 }
 
-func (s *Store) Publish(entry, title, project, session string, ttl time.Duration) (PublishResult, error) {
+func (s *Store) Publish(entry, title, project, session string, ttl time.Duration, name string) (PublishResult, error) {
 	abs, err := filepath.Abs(entry)
 	if err != nil {
 		return PublishResult{}, err
@@ -43,12 +43,25 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 		return PublishResult{}, fmt.Errorf("cannot read %s: %w", entry, err)
 	}
 
-	label := title
-	if label == "" {
-		label = strings.TrimSuffix(filepath.Base(abs), filepath.Ext(abs))
+	if name != "" {
+		// Caller chose the slug (update-in-place at a stable URL). Validate
+		// strictly before it becomes a path component under the store root.
+		if !ValidName(name) {
+			return PublishResult{}, fmt.Errorf("invalid preview name %q: use lowercase letters, digits and single hyphens only", name)
+		}
+	} else {
+		label := title
+		if label == "" {
+			label = strings.TrimSuffix(filepath.Base(abs), filepath.Ext(abs))
+		}
+		name = NewName(label)
 	}
-	name := NewName(label)
 	dir := filepath.Join(s.Root, name)
+	// Clean slate so an update never leaks files from a prior version, and the
+	// clock resets like a fresh publish.
+	if err := os.RemoveAll(dir); err != nil {
+		return PublishResult{}, err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return PublishResult{}, err
 	}

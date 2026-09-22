@@ -48,7 +48,7 @@ glim report.html --title "Quick look" --local
 ## Commands
 
 ```
-glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local] [--qr]  publish, print URL
+glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr]  publish, print URL
 glim serve [--bind ADDR] [--port N] [--root DIR]                       run the preview server
 glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h]    show or set config
 glim caddy                                                             print a reverse-proxy vhost

@@ -3,7 +3,7 @@
 ## publish
 
 ```sh
-glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local] [--qr]
+glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr]
 ```
 
 Copies `entry` into a new preview and prints its URL. A single file is served as
@@ -14,8 +14,26 @@ Copies `entry` into a new preview and prints its URL. A single file is served as
 | `--title` | Human title; becomes the readable slug. Defaults to the filename. |
 | `--project` | Stored as metadata, shown in `glim ls`. |
 | `--ttl` | Lifetime, e.g. `6h`, `30m`. Defaults to the configured TTL. |
+| `--name` | Reuse this exact slug to update in place at the same URL (created if absent). Omit for a fresh random link. |
 | `--local` | Auto-start the built-in server and return a loopback link. |
 | `--qr` | Also print a scannable QR code of the URL (to stderr, so stdout stays the plain URL). |
+
+## Updating a preview in place
+
+By default each publish gets a fresh random slug, so its URL is
+unguessable and each publish is distinct. To push updates to the **same**
+URL — while iterating on a page you have already shared — pass `--name`
+with the slug from the first publish:
+
+```sh
+glim report.html                 # → https://glim.example.com/report-k3n7/
+glim report.html --name report-k3n7   # same URL, new contents
+```
+
+`--name` accepts lowercase letters, digits and single hyphens only;
+anything else is rejected. An update replaces the preview's files
+completely (stale files from the previous version are removed) and resets
+the expiry clock from now, exactly like a fresh publish.
 
 ## serve
 

@@ -20,7 +20,7 @@ func publish(t *testing.T, s *store.Store, title, project string, ttl time.Durat
 	if err := os.WriteFile(p, []byte("<h1>hi</h1>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	res, err := s.Publish(p, title, project, "", ttl)
+	res, err := s.Publish(p, title, project, "", ttl, "")
 	if err != nil {
 		t.Fatal(err)
 	}
