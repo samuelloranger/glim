@@ -58,3 +58,21 @@ func TestNewNameEmptyLabelFallsBack(t *testing.T) {
 		t.Fatalf("empty label name = %q, want preview- prefix", name)
 	}
 }
+
+func TestValidName(t *testing.T) {
+	valid := []string{"dashboard-k3n7", "preview", "a-b-c", "abc123", "rawkoon-audiobooks-new-feature-k3n7"}
+	for _, n := range valid {
+		if !ValidName(n) {
+			t.Errorf("ValidName(%q) = false, want true", n)
+		}
+	}
+	invalid := []string{
+		"", ".", "..", "../evil", "a/b", "a\\b", "UP", "Bad-Name",
+		"-lead", "trail-", "a--b", "a.b", "a b", "a_b", strings.Repeat("a", maxSlugLen+1),
+	}
+	for _, n := range invalid {
+		if ValidName(n) {
+			t.Errorf("ValidName(%q) = true, want false", n)
+		}
+	}
+}

@@ -30,12 +30,18 @@ them in place instead of duplicating.
 ## The present tool
 
 ```
-present(path, title?, project?, ttl?) → { url, name, expires }
+present(path, title?, project?, ttl?, name?) → { url, name, expires }
 ```
 
 The agent writes a self-contained HTML file or directory, calls `present`, and
 gives you the returned `url`. It is the same URL the CLI prints, built from your
 [configured domain](/config), so it resolves wherever your server is reachable.
+
+To push an **update** to the same URL instead of minting a new one, the agent
+passes `name` set to the slug a previous `present` returned. The preview is
+replaced in place (stale files removed, expiry reset), so a link already shared
+keeps working with fresh contents. Omitting `name` gives a new random slug, as
+before. `name` accepts lowercase letters, digits and single hyphens only.
 
 ## Why a rule as well as a tool
 

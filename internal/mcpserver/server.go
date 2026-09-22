@@ -14,6 +14,7 @@ type PresentInput struct {
 	Title   string `json:"title,omitempty" jsonschema:"human title; becomes the readable link slug"`
 	Project string `json:"project,omitempty" jsonschema:"project name, stored as metadata"`
 	TTL     string `json:"ttl,omitempty" jsonschema:"how long the link lives, e.g. 6h or 30m; default 6h"`
+	Name    string `json:"name,omitempty" jsonschema:"reuse this exact slug (e.g. one returned by an earlier present) to publish an update in place at the same URL; created if it does not exist. Omit to get a fresh random link. Lowercase letters, digits and single hyphens only."`
 }
 
 type PresentOutput struct {
@@ -132,7 +133,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 			}
 			ttl = d
 		}
-		res, err := s.Publish(in.Path, in.Title, in.Project, "", ttl)
+		res, err := s.Publish(in.Path, in.Title, in.Project, "", ttl, in.Name)
 		if err != nil {
 			return nil, PresentOutput{}, err
 		}

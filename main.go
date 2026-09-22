@@ -74,11 +74,12 @@ func cmdPublish(args []string) error {
 	ttl := fs.Duration("ttl", cfg.TTLDuration(), "time to live, e.g. 6h, 30m")
 	local := fs.Bool("local", false, "auto-start the built-in server and use a localhost link")
 	qr := fs.Bool("qr", false, "also print a scannable QR code of the URL")
+	name := fs.String("name", "", "reuse this exact slug to update in place at the same URL (created if absent); omit for a fresh random link")
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
 	if entry == "" || fs.NArg() != 0 {
-		return fmt.Errorf("usage: glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local]")
+		return fmt.Errorf("usage: glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local]")
 	}
 	base := cfg.BaseURL()
 	if *local {
@@ -89,7 +90,7 @@ func cmdPublish(args []string) error {
 		base = b
 	}
 	s := store.New(cfg.Root, base)
-	res, err := s.Publish(entry, *title, *project, os.Getenv("GLIM_SESSION_ID"), *ttl)
+	res, err := s.Publish(entry, *title, *project, os.Getenv("GLIM_SESSION_ID"), *ttl, *name)
 	if err != nil {
 		return err
 	}
