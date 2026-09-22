@@ -114,6 +114,12 @@ func extendPreview(s *store.Store, in ExtendInput) (ExtendOutput, error) {
 	return ExtendOutput{Name: in.Name, Expires: m.Expires.Format(time.RFC3339)}, nil
 }
 
+// boolPtr returns a pointer to b, so that DestructiveHint/OpenWorldHint (which
+// are *bool in the SDK) serialize an explicit true/false rather than being
+// omitted. Note: ReadOnlyHint and IdempotentHint are plain bool with
+// `omitempty`, so a false value for those is dropped from the wire regardless.
+func boolPtr(b bool) *bool { return &b }
+
 func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string) error {
 	server := mcp.NewServer(&mcp.Implementation{Name: "glim", Version: version}, nil)
 
@@ -140,6 +146,14 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "present",
 		Description: "Publish a self-contained HTML file or directory and return a short-lived link to show the user. Use this to show any visual/HTML preview instead of other preview mechanisms.",
+		// Creates a new preview each call: writes state, additive (not
+		// destructive), non-idempotent, closed domain (own local store/server).
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    false,
+			DestructiveHint: boolPtr(false),
+			IdempotentHint:  false,
+			OpenWorldHint:   boolPtr(false),
+		},
 	}, present)
 
 	list := func(_ context.Context, _ *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, ListOutput, error) {
@@ -158,6 +172,13 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list",
 		Description: "List the currently live previews this glim instance is serving (name, link, expiry), optionally filtered by project.",
+		// Pure read: no mutation, idempotent, closed domain.
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: boolPtr(false),
+			IdempotentHint:  true,
+			OpenWorldHint:   boolPtr(false),
+		},
 	}, list)
 
 	revoke := func(_ context.Context, _ *mcp.CallToolRequest, in RevokeInput) (*mcp.CallToolResult, RevokeOutput, error) {
@@ -172,6 +193,14 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "revoke",
 		Description: "Revoke (delete) a live preview by its slug so its link stops working immediately.",
+		// Deletes a preview: destructive; idempotent (re-revoking lands the same
+		// gone state); closed domain.
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    false,
+			DestructiveHint: boolPtr(true),
+			IdempotentHint:  true,
+			OpenWorldHint:   boolPtr(false),
+		},
 	}, revoke)
 
 	pin := func(_ context.Context, _ *mcp.CallToolRequest, in PinInput) (*mcp.CallToolResult, PinOutput, error) {
@@ -186,6 +215,14 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "pin",
 		Description: "Pin a live preview by its slug so it never expires until explicitly revoked.",
+		// Modifies TTL, additive (not destructive); idempotent (re-pinning lands
+		// the same never-expires state); closed domain.
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    false,
+			DestructiveHint: boolPtr(false),
+			IdempotentHint:  true,
+			OpenWorldHint:   boolPtr(false),
+		},
 	}, pin)
 
 	extend := func(_ context.Context, _ *mcp.CallToolRequest, in ExtendInput) (*mcp.CallToolResult, ExtendOutput, error) {
@@ -200,6 +237,14 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "extend",
 		Description: "Extend a live preview's lifetime, setting a new TTL measured from now.",
+		// Modifies TTL, additive (not destructive); NOT idempotent (each call
+		// re-bases expiry on now, yielding a different expiry); closed domain.
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    false,
+			DestructiveHint: boolPtr(false),
+			IdempotentHint:  false,
+			OpenWorldHint:   boolPtr(false),
+		},
 	}, extend)
 
 	return server.Run(ctx, &mcp.StdioTransport{})
