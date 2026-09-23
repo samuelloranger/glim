@@ -1,13 +1,16 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/samuelloranger/glim/internal/store"
 )
@@ -48,6 +51,26 @@ func Handler(root string) http.Handler {
 	return PreviewHandler(store.New(root, ""))
 }
 
+// RunGC prunes expired previews every interval until ctx is cancelled, so an
+// expired preview's files disappear even when nothing new is published.
+func RunGC(ctx context.Context, st *store.Store, every time.Duration, logf func(string, ...any)) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n, err := st.GC()
+			if err != nil {
+				logf("gc: %v", err)
+			} else if n > 0 {
+				logf("gc: pruned %d expired preview(s)", n)
+			}
+		}
+	}
+}
+
 func Serve(root, bind string, port int) error {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
@@ -62,6 +85,7 @@ func Serve(root, bind string, port int) error {
 	actual := ln.Addr().(*net.TCPAddr).Port
 	_ = WriteState(State{Port: actual, PID: os.Getpid(), Root: root})
 	fmt.Printf("glim serving %s on %s:%d\n", root, bind, actual)
+	go RunGC(context.Background(), store.New(root, ""), time.Minute, log.Printf)
 	return http.Serve(ln, Handler(root))
 }
 

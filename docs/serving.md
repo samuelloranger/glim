@@ -10,9 +10,18 @@ glim serve
 ```
 
 It binds `bind:port` from config (default `127.0.0.1:8787`) and serves previews
-from `root`. It serves each preview's files and its `index.html`, never lists a
-directory, and returns 404 for the site root. State is written to
-`~/.glim/serve.json` so a `--local` publish can find and reuse it.
+from `root`. It serves each live preview's files and its `index.html`, never
+lists a directory, never serves dot-prefixed paths (such as `.glim.json` or
+`.env`), and returns 404 for a preview whose lifetime has elapsed, even before it
+is garbage-collected. The server also prunes expired previews once a minute.
+State is written to `~/.glim/serve.json` so a `--local` publish can find and
+reuse it.
+
+Every preview response carries
+`Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads`.
+Previews run as an isolated (opaque) origin: scripts, forms, pop-ups and
+downloads work, but `localStorage`, `sessionStorage` and cookies are
+unavailable — code that touches them without a `try`/`catch` will throw.
 
 ## Run it as a service
 

@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -124,4 +125,29 @@ func TestFreePortIsUsable(t *testing.T) {
 	if err != nil || p <= 0 {
 		t.Fatalf("FreePort = %d err=%v", p, err)
 	}
+}
+
+func TestRunGCPrunesExpired(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	now := time.Now()
+	st.Now = func() time.Time { return now }
+	publish(t, st, "gone-abcd", map[string]string{"index.html": "x"}, time.Minute)
+	now = now.Add(time.Hour)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { RunGC(ctx, st, 10*time.Millisecond, t.Logf); close(done) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(st.Root, "gone-abcd")); os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("expired preview was not pruned")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
 }
