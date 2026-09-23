@@ -30,6 +30,21 @@ jobs:
         run: |
           go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o glim .
           tar -czf glim_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz glim
+      - name: smoke test the binary (no toolchain, empty env)
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          file glim | grep -q 'statically linked'
+          H=$(mktemp -d)
+          env -i HOME="$H" ./glim serve --port 18790 > "$H/serve.log" 2>&1 &
+          SERVER=$!
+          for i in $(seq 50); do curl -sf http://127.0.0.1:18790/ >/dev/null && break; sleep 0.2; done
+          page=$(curl -sf http://127.0.0.1:18790/)
+          asset=$(printf '%s' "$page" | grep -o '/_glim/assets/[^"]*\.js' | head -1)
+          test -n "$asset"
+          curl -sf -o /dev/null "http://127.0.0.1:18790$asset"
+          curl -sf http://127.0.0.1:18790/_glim/api/setup | grep -q '"needed":true'
+          grep -q 'setup code:' "$H/serve.log"
+          kill "$SERVER"
       - uses: softprops/action-gh-release@v2
         with:
           files: glim_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz

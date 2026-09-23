@@ -16,3 +16,26 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
       - run: go build ./...
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bunx biome ci .
+      - run: bun run test
+      - run: bun run build
+      - name: committed dist matches the source
+        run: git diff --exit-code -- ../internal/web/dist
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run e2e
