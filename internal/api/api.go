@@ -76,6 +76,11 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /_glim/api/login", s.postLogin)
 	m.Handle("POST /_glim/api/logout", s.authed(s.postLogout))
 	m.Handle("GET /_glim/api/session", s.authed(s.getSession))
+	m.Handle("GET /_glim/api/previews", s.authed(s.getPreviews))
+	m.Handle("POST /_glim/api/previews/{name}/extend", s.authed(s.postExtend))
+	m.Handle("POST /_glim/api/previews/{name}/pin", s.authed(s.postPin))
+	m.Handle("DELETE /_glim/api/previews/{name}", s.authed(s.deletePreview))
+	m.Handle("GET /_glim/api/events", s.authed(s.getEvents))
 	m.HandleFunc("/_glim/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not_found", "No such endpoint.")
 	})
