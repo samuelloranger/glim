@@ -130,10 +130,10 @@ glim version
 
 ```sh
 glim user ls                # list dashboard accounts
-glim user passwd <name>     # set a new password (prompts twice); signs that user out everywhere
-glim user rm <name>         # remove an account and its sessions
+glim user passwd <email>    # set a new password (prompts twice); signs that user out everywhere
+glim user rm <email>        # remove an account and its sessions
 ```
 
 Use these from a shell on the server to recover access to the dashboard. If
-you remove the last account, the next `glim serve` start prints a new setup
-code. `glim status` shows a pending setup code while no account exists.
+you remove the last account, the dashboard offers the "Create your account"
+form again.

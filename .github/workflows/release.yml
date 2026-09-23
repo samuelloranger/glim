@@ -43,7 +43,7 @@ jobs:
           test -n "$asset"
           curl -sf -o /dev/null "http://127.0.0.1:18790$asset"
           curl -sf http://127.0.0.1:18790/_glim/api/setup | grep -q '"needed":true'
-          grep -q 'setup code:' "$H/serve.log"
+          grep -q 'no account yet' "$H/serve.log"
           kill "$SERVER"
       - uses: softprops/action-gh-release@v2
         with:

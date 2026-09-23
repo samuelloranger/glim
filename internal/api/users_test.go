@@ -7,35 +7,35 @@ import (
 
 func TestUserManagement(t *testing.T) {
 	e := newEnv(t)
-	s := e.signIn("sam")
-	rec := e.do(http.MethodPost, "/_glim/api/users", map[string]string{"username": "Amy", "password": testPass}, &s, nil)
-	if rec.Code != 201 || jsonBody(t, rec)["username"] != "amy" {
+	s := e.signIn("sam@example.com")
+	rec := e.do(http.MethodPost, "/_glim/api/users", map[string]string{"email": "Amy@Example.com", "password": testPass}, &s, nil)
+	if rec.Code != 201 || jsonBody(t, rec)["email"] != "amy@example.com" {
 		t.Fatalf("add = %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := e.do(http.MethodPost, "/_glim/api/users", map[string]string{"username": "amy", "password": testPass}, &s, nil); rec.Code != 409 {
+	if rec := e.do(http.MethodPost, "/_glim/api/users", map[string]string{"email": "amy@example.com", "password": testPass}, &s, nil); rec.Code != 409 {
 		t.Fatalf("dup = %d", rec.Code)
 	}
-	if rec := e.do(http.MethodPost, "/_glim/api/users", map[string]string{"username": "bo b", "password": testPass}, &s, nil); rec.Code != 400 {
+	if rec := e.do(http.MethodPost, "/_glim/api/users", map[string]string{"email": "not-an-email", "password": testPass}, &s, nil); rec.Code != 400 {
 		t.Fatalf("bad name = %d", rec.Code)
 	}
 	list := jsonBody(t, e.do(http.MethodGet, "/_glim/api/users", nil, &s, nil))["users"].([]any)
 	if len(list) != 2 {
 		t.Fatalf("list = %v", list)
 	}
-	if rec := e.do(http.MethodDelete, "/_glim/api/users/sam", nil, &s, nil); rec.Code != 409 {
+	if rec := e.do(http.MethodDelete, "/_glim/api/users/sam@example.com", nil, &s, nil); rec.Code != 409 {
 		t.Fatalf("self delete = %d", rec.Code)
 	}
-	if rec := e.do(http.MethodDelete, "/_glim/api/users/amy", nil, &s, nil); rec.Code != 204 {
+	if rec := e.do(http.MethodDelete, "/_glim/api/users/amy@example.com", nil, &s, nil); rec.Code != 204 {
 		t.Fatalf("delete = %d", rec.Code)
 	}
-	if rec := e.do(http.MethodDelete, "/_glim/api/users/amy", nil, &s, nil); rec.Code != 404 {
+	if rec := e.do(http.MethodDelete, "/_glim/api/users/amy@example.com", nil, &s, nil); rec.Code != 404 {
 		t.Fatalf("delete twice = %d", rec.Code)
 	}
 }
 
 func TestChangePasswordEndpoint(t *testing.T) {
 	e := newEnv(t)
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	other, _ := e.db.CreateSession(t.Context(), s.User)
 	wrong := map[string]string{"current": "not it at all", "next": "a fresh passphrase"}
 	if rec := e.do(http.MethodPost, "/_glim/api/account/password", wrong, &s, nil); rec.Code != 400 {

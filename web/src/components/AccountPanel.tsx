@@ -65,18 +65,18 @@ export function AccountPanel(props: {
       const u = await api.addUser(newName(), newPass());
       setNewName("");
       setNewPass("");
-      props.toast(`Added ${u.username}`);
+      props.toast(`Added ${u.email}`);
       await loadUsers();
     } catch (err) {
       setAddError(errorText(err));
     }
   }
 
-  async function removeUser(username: string) {
+  async function removeUser(email: string) {
     setRemoving(null);
     try {
-      await api.removeUser(username);
-      props.toast(`Removed ${username}`);
+      await api.removeUser(email);
+      props.toast(`Removed ${email}`);
       await loadUsers();
     } catch (err) {
       props.toast(errorText(err), "error");
@@ -93,7 +93,7 @@ export function AccountPanel(props: {
       }}
     >
       <div class="panel-head">
-        <h2 id="account-title">Signed in as {props.user.username}</h2>
+        <h2 id="account-title">Signed in as {props.user.email}</h2>
         <button class="btn quiet" type="button" onClick={() => props.onClose()}>
           Close
         </button>
@@ -159,18 +159,15 @@ export function AccountPanel(props: {
           <For each={users()}>
             {(u) => (
               <li>
-                <span>{u.username}</span>
-                <Show
-                  when={u.username !== props.user.username}
-                  fallback={<span class="help">You</span>}
-                >
+                <span>{u.email}</span>
+                <Show when={u.email !== props.user.email} fallback={<span class="help">You</span>}>
                   <Show
-                    when={removing() === u.username}
+                    when={removing() === u.email}
                     fallback={
                       <button
                         class="btn quiet danger"
                         type="button"
-                        onClick={() => setRemoving(u.username)}
+                        onClick={() => setRemoving(u.email)}
                       >
                         Remove
                       </button>
@@ -180,9 +177,9 @@ export function AccountPanel(props: {
                       <button
                         class="btn danger"
                         type="button"
-                        onClick={() => void removeUser(u.username)}
+                        onClick={() => void removeUser(u.email)}
                       >
-                        Remove {u.username}
+                        Remove {u.email}
                       </button>
                       <button class="btn quiet" type="button" onClick={() => setRemoving(null)}>
                         Cancel
@@ -196,10 +193,11 @@ export function AccountPanel(props: {
         </ul>
         <form class="auth-form" onSubmit={addUser}>
           <div class="field">
-            <label for="add-name">Username</label>
+            <label for="add-name">Email</label>
             <input
               id="add-name"
               class="input"
+              type="email"
               autocomplete="off"
               autocapitalize="none"
               required

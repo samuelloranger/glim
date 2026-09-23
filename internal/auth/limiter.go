@@ -18,7 +18,7 @@ type userFails struct {
 	last  time.Time
 }
 
-// Limiter throttles sign-in and setup attempts in memory. The per-username
+// Limiter throttles sign-in attempts in memory. The per-account
 // backoff can't be dodged by rotating IPs; the per-IP window stops spraying.
 type Limiter struct {
 	mu    sync.Mutex
@@ -102,8 +102,8 @@ func (l *Limiter) pruneIP(ip string, now time.Time) []time.Time {
 	return fails
 }
 
-// sweep drops username entries whose backoff has fully elapsed, bounding memory
-// when an attacker sprays many usernames.
+// sweep drops account entries whose backoff has fully elapsed, bounding memory
+// when an attacker sprays many addresses.
 func (l *Limiter) sweep(now time.Time) {
 	for u, f := range l.users {
 		if now.Sub(f.last) > userMaxBackoff {

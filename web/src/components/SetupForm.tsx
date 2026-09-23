@@ -4,8 +4,7 @@ import type { SessionInfo } from "../lib/types";
 import { AuthShell } from "./AuthShell";
 
 export function SetupForm(props: { onDone: (info: SessionInfo) => void }) {
-  const [code, setCode] = createSignal("");
-  const [username, setUsername] = createSignal("");
+  const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [confirm, setConfirm] = createSignal("");
   const [error, setError] = createSignal("");
@@ -21,7 +20,7 @@ export function SetupForm(props: { onDone: (info: SessionInfo) => void }) {
     setBusy(true);
     setError("");
     try {
-      props.onDone(await api.setup(code(), username(), password()));
+      props.onDone(await api.setup(email(), password()));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -33,32 +32,17 @@ export function SetupForm(props: { onDone: (info: SessionInfo) => void }) {
     <AuthShell title="Create your account" glance={glance()}>
       <form class="auth-form" onSubmit={submit}>
         <div class="field">
-          <label for="setup-code">Setup code</label>
+          <label for="setup-email">Email</label>
           <input
-            id="setup-code"
-            class="input mono"
-            autocomplete="one-time-code"
-            autocapitalize="characters"
+            id="setup-email"
+            class="input"
+            type="email"
+            autocomplete="email"
+            autocapitalize="none"
             spellcheck="false"
             required
-            value={code()}
-            onInput={(e) => setCode(e.currentTarget.value)}
-            aria-describedby="setup-code-help"
-          />
-          <p id="setup-code-help" class="help">
-            Printed in the <code>glim serve</code> log, and by <code>glim status</code>.
-          </p>
-        </div>
-        <div class="field">
-          <label for="setup-username">Username</label>
-          <input
-            id="setup-username"
-            class="input"
-            autocomplete="username"
-            autocapitalize="none"
-            required
-            value={username()}
-            onInput={(e) => setUsername(e.currentTarget.value)}
+            value={email()}
+            onInput={(e) => setEmail(e.currentTarget.value)}
           />
         </div>
         <div class="field">

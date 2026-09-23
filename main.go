@@ -274,9 +274,6 @@ func cmdStatus() error {
 	} else {
 		fmt.Printf("next gc:  %s (in %s)\n", next.Format(time.RFC1123), short(time.Until(next)))
 	}
-	if code, ok := auth.ReadSetupCode(config.SetupCodePath()); ok {
-		fmt.Printf("setup:    open %s/ and enter code %s\n", cfg.BaseURL(), auth.FormatSetupCode(code))
-	}
 	return nil
 }
 
@@ -320,7 +317,7 @@ func cmdServe(args []string) error {
 		return err
 	}
 	defer db.Close()
-	code, err := db.EnsureSetupCode(ctx, config.SetupCodePath())
+	users, err := db.CountUsers(ctx)
 	if err != nil {
 		return err
 	}
@@ -328,15 +325,14 @@ func cmdServe(args []string) error {
 	if shownBase == "" {
 		shownBase = serve.BaseURL(*port)
 	}
-	if code != "" {
-		log.Printf("setup code: %s — open %s/ to create your account", auth.FormatSetupCode(code), shownBase)
+	if users == 0 {
+		log.Printf("no account yet — open %s/ to create the first one", shownBase)
 	}
 
 	hub := api.NewHub(st, db, 2*time.Second, log.Printf)
 	go hub.Run(ctx)
 	apiSrv := api.New(api.Deps{
 		Store: st, Auth: db, Limiter: auth.NewLimiter(nil), Hub: hub,
-		SetupCodePath: config.SetupCodePath(),
 		SecureCookies: strings.HasPrefix(base, "https://"),
 		Logf:          log.Printf,
 	})
@@ -478,7 +474,7 @@ func cmdUser(args []string) error {
 
 func runUser(args []string, db *auth.DB, in *bufio.Reader, out io.Writer) error {
 	ctx := context.Background()
-	usage := fmt.Errorf("usage: glim user ls | passwd <name> | rm <name>")
+	usage := fmt.Errorf("usage: glim user ls | passwd <email> | rm <email>")
 	if len(args) == 0 {
 		return usage
 	}
@@ -489,13 +485,13 @@ func runUser(args []string, db *auth.DB, in *bufio.Reader, out io.Writer) error 
 			return err
 		}
 		if len(users) == 0 {
-			fmt.Fprintln(out, "no users (open the dashboard with the setup code from `glim serve`)")
+			fmt.Fprintln(out, "no accounts yet (open the dashboard to create the first one)")
 			return nil
 		}
 		w := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "USERNAME\tCREATED")
+		fmt.Fprintln(w, "EMAIL\tCREATED")
 		for _, u := range users {
-			fmt.Fprintf(w, "%s\t%s\n", u.Username, u.CreatedAt.Local().Format(time.RFC1123))
+			fmt.Fprintf(w, "%s\t%s\n", u.Email, u.CreatedAt.Local().Format(time.RFC1123))
 		}
 		return w.Flush()
 	case "passwd":
@@ -606,7 +602,7 @@ usage:
   glim open <name> | status                   open a link / show instance status
   glim mcp                                    run as MCP server
   glim install <claude|codex|cursor>          wire into an agent
-  glim user ls | passwd <name> | rm <name>    manage dashboard accounts
+  glim user ls | passwd <email> | rm <email>  manage dashboard accounts
   glim version
 
 config: ~/.glim/config.json (env: GLIM_DOMAIN, GLIM_PORT, GLIM_ROOT, GLIM_TTL, GLIM_SESSION_ID)

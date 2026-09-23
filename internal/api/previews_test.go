@@ -8,7 +8,7 @@ import (
 
 func TestListPreviews(t *testing.T) {
 	e := newEnv(t)
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	publishPreview(t, e.st, "Diff review", time.Hour)
 	b := jsonBody(t, e.do(http.MethodGet, "/_glim/api/previews", nil, &s, nil))
 	if len(b["previews"].([]any)) != 1 || b["status"].(map[string]any)["live"] != float64(1) {
@@ -18,7 +18,7 @@ func TestListPreviews(t *testing.T) {
 
 func TestExtendValidation(t *testing.T) {
 	e := newEnv(t)
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	name := publishPreview(t, e.st, "Ext", time.Hour)
 	path := "/_glim/api/previews/" + name + "/extend"
 	for _, ttl := range []string{"", "abc", "0s", "-1h", "8761h", "7d"} {
@@ -48,7 +48,7 @@ func TestExtendValidation(t *testing.T) {
 
 func TestPinAndRemove(t *testing.T) {
 	e := newEnv(t)
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	name := publishPreview(t, e.st, "Pin me", time.Hour)
 	rec := e.do(http.MethodPost, "/_glim/api/previews/"+name+"/pin", nil, &s, nil)
 	if rec.Code != 200 || jsonBody(t, rec)["pinned"] != true {

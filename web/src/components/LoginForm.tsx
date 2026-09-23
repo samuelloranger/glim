@@ -4,7 +4,7 @@ import type { SessionInfo } from "../lib/types";
 import { AuthShell } from "./AuthShell";
 
 export function LoginForm(props: { notice?: string; onDone: (info: SessionInfo) => void }) {
-  const [username, setUsername] = createSignal("");
+  const [email, setEmail] = createSignal("");
   const [password, setPassword] = createSignal("");
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
@@ -15,7 +15,7 @@ export function LoginForm(props: { notice?: string; onDone: (info: SessionInfo) 
     setBusy(true);
     setError("");
     try {
-      props.onDone(await api.login(username(), password()));
+      props.onDone(await api.login(email(), password()));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -32,15 +32,16 @@ export function LoginForm(props: { notice?: string; onDone: (info: SessionInfo) 
       </Show>
       <form class="auth-form" onSubmit={submit}>
         <div class="field">
-          <label for="login-username">Username</label>
+          <label for="login-email">Email</label>
           <input
-            id="login-username"
+            id="login-email"
+            type="email"
             class="input"
             autocomplete="username"
             autocapitalize="none"
             required
-            value={username()}
-            onInput={(e) => setUsername(e.currentTarget.value)}
+            value={email()}
+            onInput={(e) => setEmail(e.currentTarget.value)}
           />
         </div>
         <div class="field">

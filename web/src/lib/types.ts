@@ -17,7 +17,7 @@ export type Status = {
 
 export type Snapshot = { now: string; previews: Preview[]; status: Status };
 
-export type User = { username: string; createdAt: string };
+export type User = { email: string; createdAt: string };
 
 export type SessionInfo = { user: User; csrf: string };
 

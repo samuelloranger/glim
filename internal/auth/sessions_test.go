@@ -10,7 +10,7 @@ import (
 func TestSessionLifecycle(t *testing.T) {
 	db, c := openTest(t)
 	ctx := context.Background()
-	u, _ := db.CreateUser(ctx, "sam", goodPass)
+	u, _ := db.CreateUser(ctx, "sam@example.com", goodPass)
 
 	s, err := db.CreateSession(ctx, u)
 	if err != nil {
@@ -20,7 +20,7 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("weak tokens: %+v", s)
 	}
 	got, err := db.LookupSession(ctx, s.Token)
-	if err != nil || got.User.Username != "sam" || got.CSRF != s.CSRF || got.Token != s.Token {
+	if err != nil || got.User.Email != "sam@example.com" || got.CSRF != s.CSRF || got.Token != s.Token {
 		t.Fatalf("lookup = %+v, %v", got, err)
 	}
 	var stored []byte
@@ -54,7 +54,7 @@ func TestSessionLifecycle(t *testing.T) {
 func TestDeleteAndPruneSessions(t *testing.T) {
 	db, c := openTest(t)
 	ctx := context.Background()
-	u, _ := db.CreateUser(ctx, "sam", goodPass)
+	u, _ := db.CreateUser(ctx, "sam@example.com", goodPass)
 	a, _ := db.CreateSession(ctx, u)
 	b, _ := db.CreateSession(ctx, u)
 	if err := db.DeleteSession(ctx, a.Token); err != nil {
@@ -74,7 +74,7 @@ func TestDeleteAndPruneSessions(t *testing.T) {
 func TestChangePasswordRevokesOthers(t *testing.T) {
 	db, _ := openTest(t)
 	ctx := context.Background()
-	u, _ := db.CreateUser(ctx, "sam", goodPass)
+	u, _ := db.CreateUser(ctx, "sam@example.com", goodPass)
 	keep, _ := db.CreateSession(ctx, u)
 	other, _ := db.CreateSession(ctx, u)
 
@@ -98,9 +98,9 @@ func TestChangePasswordRevokesOthers(t *testing.T) {
 func TestDeleteUserCascadesSessions(t *testing.T) {
 	db, _ := openTest(t)
 	ctx := context.Background()
-	u, _ := db.CreateUser(ctx, "sam", goodPass)
+	u, _ := db.CreateUser(ctx, "sam@example.com", goodPass)
 	s, _ := db.CreateSession(ctx, u)
-	if err := db.DeleteUser(ctx, "sam"); err != nil {
+	if err := db.DeleteUser(ctx, "sam@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.LookupSession(ctx, s.Token); !errors.Is(err, ErrNoSession) {

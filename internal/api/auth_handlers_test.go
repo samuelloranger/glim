@@ -4,24 +4,18 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
-
-	"github.com/samuelloranger/glim/internal/auth"
 )
 
 func TestSetupFlow(t *testing.T) {
 	e := newEnv(t)
-	code, err := e.db.EnsureSetupCode(t.Context(), e.codePath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if b := jsonBody(t, e.do(http.MethodGet, "/_glim/api/setup", nil, nil, nil)); b["needed"] != true {
 		t.Fatalf("needed = %v", b)
 	}
-	body := map[string]string{"code": "WRONGWRONG", "username": "sam", "password": testPass}
+	body := map[string]string{"email": "not-an-email", "password": testPass}
 	if rec := e.do(http.MethodPost, "/_glim/api/setup", body, nil, nil); rec.Code != 400 || jsonBody(t, rec)["code"] != "invalid" {
-		t.Fatalf("wrong code = %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("bad email = %d %s", rec.Code, rec.Body.String())
 	}
-	body["code"] = auth.FormatSetupCode(code)
+	body["email"] = "Sam@Example.com"
 	body["password"] = "short"
 	if rec := e.do(http.MethodPost, "/_glim/api/setup", body, nil, nil); rec.Code != 400 {
 		t.Fatalf("weak password = %d", rec.Code)
@@ -39,12 +33,14 @@ func TestSetupFlow(t *testing.T) {
 		c[0].SameSite != http.SameSiteStrictMode || c[0].Path != "/_glim" {
 		t.Fatalf("cookie = %+v", c)
 	}
-	if jsonBody(t, rec)["csrf"] == "" {
-		t.Fatal("no csrf in body")
+	b := jsonBody(t, rec)
+	if b["csrf"] == "" || b["user"].(map[string]any)["email"] != "sam@example.com" {
+		t.Fatalf("body = %v", b)
 	}
 	if b := jsonBody(t, e.do(http.MethodGet, "/_glim/api/setup", nil, nil, nil)); b["needed"] != false {
 		t.Fatalf("needed after = %v", b)
 	}
+	body["email"] = "eve@example.com"
 	if rec := e.do(http.MethodPost, "/_glim/api/setup", body, nil, nil); rec.Code != 409 {
 		t.Fatalf("second setup = %d", rec.Code)
 	}
@@ -60,10 +56,10 @@ func TestSetupRequiresJSON(t *testing.T) {
 
 func TestLoginAndThrottle(t *testing.T) {
 	e := newEnv(t)
-	if _, err := e.db.CreateUser(t.Context(), "sam", testPass); err != nil {
+	if _, err := e.db.CreateUser(t.Context(), "sam@example.com", testPass); err != nil {
 		t.Fatal(err)
 	}
-	bad := map[string]string{"username": "sam", "password": "not the password"}
+	bad := map[string]string{"email": "sam@example.com", "password": "not the password"}
 	for i := 0; i < 5; i++ {
 		if rec := e.do(http.MethodPost, "/_glim/api/login", bad, nil, nil); rec.Code != 401 {
 			t.Fatalf("bad login %d = %d", i, rec.Code)
@@ -77,17 +73,17 @@ func TestLoginAndThrottle(t *testing.T) {
 		t.Fatalf("Retry-After = %q", rec.Header().Get("Retry-After"))
 	}
 	// Unknown users get the same answer as a wrong password.
-	unk := e.do(http.MethodPost, "/_glim/api/login", map[string]string{"username": "ghost", "password": testPass}, nil,
+	unk := e.do(http.MethodPost, "/_glim/api/login", map[string]string{"email": "ghost@example.com", "password": testPass}, nil,
 		map[string]string{"RemoteAddr": "198.51.100.1:1"})
-	if unk.Code != 401 || jsonBody(t, unk)["error"] != "Wrong username or password." {
+	if unk.Code != 401 || jsonBody(t, unk)["error"] != "Wrong email or password." {
 		t.Fatalf("unknown = %d %s", unk.Code, unk.Body.String())
 	}
 }
 
 func TestLoginSuccessSetsCookie(t *testing.T) {
 	e := newEnv(t)
-	e.db.CreateUser(t.Context(), "sam", testPass)
-	rec := e.do(http.MethodPost, "/_glim/api/login", map[string]string{"username": "Sam", "password": testPass}, nil, nil)
+	e.db.CreateUser(t.Context(), "sam@example.com", testPass)
+	rec := e.do(http.MethodPost, "/_glim/api/login", map[string]string{"email": "Sam@Example.com", "password": testPass}, nil, nil)
 	if rec.Code != 200 || len(rec.Result().Cookies()) != 1 {
 		t.Fatalf("login = %d %s", rec.Code, rec.Body.String())
 	}

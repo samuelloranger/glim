@@ -58,10 +58,10 @@ func (db *DB) LookupSession(ctx context.Context, token string) (Session, error) 
 	var s Session
 	var lastSeen, exp, created int64
 	err := db.sql.QueryRowContext(ctx, `
-		SELECT s.csrf, s.last_seen_at, s.expires_at, u.id, u.username, u.created_at
+		SELECT s.csrf, s.last_seen_at, s.expires_at, u.id, u.email, u.created_at
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ?`, th).
-		Scan(&s.CSRF, &lastSeen, &exp, &s.User.ID, &s.User.Username, &created)
+		Scan(&s.CSRF, &lastSeen, &exp, &s.User.ID, &s.User.Email, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrNoSession
 	}
@@ -102,7 +102,7 @@ func (db *DB) PruneSessions(ctx context.Context) (int64, error) {
 // ChangePassword verifies current, stores next, and signs the user out of
 // every session except keepToken.
 func (db *DB) ChangePassword(ctx context.Context, user User, current, next, keepToken string) error {
-	if _, err := db.Authenticate(ctx, user.Username, current); err != nil {
+	if _, err := db.Authenticate(ctx, user.Email, current); err != nil {
 		return err
 	}
 	if err := ValidatePassword(next); err != nil {

@@ -16,11 +16,10 @@ import (
 const testPass = "correct horse battery"
 
 type env struct {
-	t        *testing.T
-	db       *auth.DB
-	st       *store.Store
-	srv      *Server
-	codePath string
+	t   *testing.T
+	db  *auth.DB
+	st  *store.Store
+	srv *Server
 }
 
 func newEnv(t *testing.T) *env {
@@ -36,12 +35,11 @@ func newEnvWith(t *testing.T, tweak func(*Deps)) *env {
 	db.BcryptCost = bcrypt.MinCost
 	t.Cleanup(func() { db.Close() })
 	e := &env{
-		t:        t,
-		db:       db,
-		st:       store.New(t.TempDir(), "https://glim.example.com"),
-		codePath: filepath.Join(t.TempDir(), "setup-code"),
+		t:  t,
+		db: db,
+		st: store.New(t.TempDir(), "https://glim.example.com"),
 	}
-	d := Deps{Store: e.st, Auth: db, Limiter: auth.NewLimiter(nil), SetupCodePath: e.codePath,
+	d := Deps{Store: e.st, Auth: db, Limiter: auth.NewLimiter(nil),
 		SecureCookies: true, Logf: t.Logf}
 	tweak(&d)
 	e.srv = New(d)
@@ -90,9 +88,9 @@ func (e *env) do(method, path string, body any, sess *auth.Session, hdr map[stri
 	return rec
 }
 
-func (e *env) signIn(username string) auth.Session {
+func (e *env) signIn(email string) auth.Session {
 	e.t.Helper()
-	u, err := e.db.CreateUser(e.t.Context(), username, testPass)
+	u, err := e.db.CreateUser(e.t.Context(), email, testPass)
 	if err != nil {
 		e.t.Fatal(err)
 	}

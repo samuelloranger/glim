@@ -76,7 +76,7 @@ func liveEnv(t *testing.T) (*env, *httptest.Server) {
 
 func TestEventsStreamsSnapshots(t *testing.T) {
 	e, srv := liveEnv(t)
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	stream := openEvents(t, srv, s)
 	first, err := stream.next(t)
 	if err != nil || first.Status.Live != 0 {
@@ -98,7 +98,7 @@ func TestEventsStreamsSnapshots(t *testing.T) {
 
 func TestEventsCloseAfterSessionDeleted(t *testing.T) {
 	e, srv := liveEnv(t)
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	stream := openEvents(t, srv, s)
 	if _, err := stream.next(t); err != nil {
 		t.Fatal(err)

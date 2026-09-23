@@ -106,7 +106,7 @@ export function Dashboard(props: {
       <StatusBar
         conn={live.conn()}
         status={live.state.status}
-        accountLabel={props.user.username}
+        accountLabel={props.user.email}
         onAccount={() => setAccountOpen(true)}
       />
       <div class="toolbar">

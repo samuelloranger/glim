@@ -8,15 +8,13 @@ about two seconds without a reload.
 
 ## First sign-in
 
-When no account exists, `glim serve` prints a one-time setup code:
+While no account exists, the dashboard shows a "Create your account" form.
+Enter an email address and a password (at least 12 characters). That becomes
+the first account; the form is gone for as long as any account exists.
 
-```
-setup code: K7QM-4XPR-9T — open https://glim.example.com/ to create your account
-```
-
-`glim status` shows the same code. Open the dashboard, enter the code, and
-choose a username and password (at least 12 characters). The code stops
-working as soon as the first account exists.
+Whoever reaches the dashboard first creates that account. Create it right after
+you start `glim serve`, before the server is reachable from networks you don't
+trust. Until then, `glim serve` logs `no account yet` at startup.
 
 ## Accounts
 
@@ -28,12 +26,11 @@ From a shell on the server:
 
 ```sh
 glim user ls
-glim user passwd <name>   # reset a forgotten password
-glim user rm <name>
+glim user passwd <email>   # reset a forgotten password
+glim user rm <email>
 ```
 
-Removing the last account brings back the setup code on the next `glim serve`
-start.
+Removing the last account brings back the "Create your account" form.
 
 ## Sign-in security
 
@@ -43,7 +40,7 @@ start.
 - Session cookies are `HttpOnly` and `SameSite=Strict`. They are scoped to the
   dashboard's own paths, so previews never receive them, and they are `Secure`
   when your domain uses `https`.
-- Repeated failed sign-ins are slowed down per username and per client address.
+- Repeated failed sign-ins are slowed down per account and per client address.
   Behind a reverse proxy, the client address comes from `X-Forwarded-For`, but
   only when the proxy connects from a loopback or private address.
 - Previews run as an isolated origin (see [Serving](./serving.md)), so a

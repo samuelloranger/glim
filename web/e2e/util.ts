@@ -1,13 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const home = () => process.env.GLIM_E2E_HOME as string;
 const bin = () => process.env.GLIM_E2E_BIN as string;
-
-export function setupCode(): string {
-  return readFileSync(join(home(), ".glim", "setup-code"), "utf8").trim();
-}
 
 /** Publishes like an agent would (a separate CLI process); returns the slug. */
 export function publish(

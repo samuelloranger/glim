@@ -50,20 +50,20 @@ func TestProtectedEndpointNeedsSession(t *testing.T) {
 	if bogus.Code != 401 {
 		t.Fatalf("bogus cookie = %d", bogus.Code)
 	}
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	rec := e.do(http.MethodGet, "/_glim/api/session", nil, &s, nil)
 	if rec.Code != 200 {
 		t.Fatalf("session = %d %s", rec.Code, rec.Body.String())
 	}
 	b := jsonBody(t, rec)
-	if b["csrf"] != s.CSRF || b["user"].(map[string]any)["username"] != "sam" {
+	if b["csrf"] != s.CSRF || b["user"].(map[string]any)["email"] != "sam@example.com" {
 		t.Fatalf("body = %v", b)
 	}
 }
 
 func TestMutationsNeedCSRFAndSameOrigin(t *testing.T) {
 	e := newEnv(t)
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	for name, hdr := range map[string]map[string]string{
 		"missing csrf":   {"X-Glim-CSRF": ""},
 		"wrong csrf":     {"X-Glim-CSRF": "nope"},
@@ -84,7 +84,7 @@ func TestMutationsNeedCSRFAndSameOrigin(t *testing.T) {
 
 func TestOriginViaTrustedForwardedHost(t *testing.T) {
 	e := newEnv(t)
-	s := e.signIn("sam")
+	s := e.signIn("sam@example.com")
 	proxied := map[string]string{
 		"RemoteAddr":       "172.18.0.2:5555",
 		"Host":             "127.0.0.1:8787",

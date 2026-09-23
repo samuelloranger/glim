@@ -1,7 +1,8 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
-import { publish, setupCode } from "./util";
+import { publish } from "./util";
 
 const PASSWORD = "correct horse battery";
+const EMAIL = "sam@example.com";
 
 test.describe.configure({ mode: "serial" });
 
@@ -20,16 +21,17 @@ test.afterAll(async () => {
 
 const card = (title: string) => page.getByRole("article", { name: title, exact: true });
 
-test("setup requires the code, then lands on an empty dashboard", async () => {
+test("the first visit creates the account with email and password", async () => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
-  await page.getByLabel("Setup code").fill("WRONGWRONG");
-  await page.getByLabel("Username").fill("sam");
+  await expect(page.getByLabel("Setup code")).toHaveCount(0);
+  // The browser accepts "sam@example" (type=email); the server wants a dotted domain.
+  await page.getByLabel("Email").fill("sam@example");
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByRole("alert")).toContainText("setup code doesn't match");
-  await page.getByLabel("Setup code").fill(setupCode());
+  await expect(page.getByRole("alert")).toContainText("valid email address");
+  await page.getByLabel("Email").fill(EMAIL);
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByText("Nothing to see yet.")).toBeVisible();
 });
@@ -100,10 +102,10 @@ test("the API refuses anonymous requests", async ({ request }) => {
 });
 
 test("sign out and back in", async () => {
-  await page.getByRole("button", { name: "sam", exact: true }).click();
+  await page.getByRole("button", { name: EMAIL, exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in to glim" })).toBeVisible();
-  await page.getByLabel("Username").fill("sam");
+  await page.getByLabel("Email").fill(EMAIL);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(card("Diff review")).toBeVisible();

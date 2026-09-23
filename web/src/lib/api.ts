@@ -61,10 +61,10 @@ export function createApi(fetchFn: typeof fetch = fetch) {
       unauthorized = fn;
     },
     setupStatus: () => request<{ needed: boolean }>("GET", "/setup"),
-    setup: (code: string, username: string, password: string) =>
-      request<SessionInfo>("POST", "/setup", { code, username, password }),
-    login: (username: string, password: string) =>
-      request<SessionInfo>("POST", "/login", { username, password }),
+    setup: (email: string, password: string) =>
+      request<SessionInfo>("POST", "/setup", { email, password }),
+    login: (email: string, password: string) =>
+      request<SessionInfo>("POST", "/login", { email, password }),
     logout: () => request<void>("POST", "/logout"),
     session: () => request<SessionInfo>("GET", "/session"),
     previews: () => request<Snapshot>("GET", "/previews"),
@@ -73,9 +73,9 @@ export function createApi(fetchFn: typeof fetch = fetch) {
     pin: (name: string) => request<Preview>("POST", `/previews/${enc(name)}/pin`),
     remove: (name: string) => request<void>("DELETE", `/previews/${enc(name)}`),
     users: () => request<{ users: User[] }>("GET", "/users"),
-    addUser: (username: string, password: string) =>
-      request<User>("POST", "/users", { username, password }),
-    removeUser: (username: string) => request<void>("DELETE", `/users/${enc(username)}`),
+    addUser: (email: string, password: string) =>
+      request<User>("POST", "/users", { email, password }),
+    removeUser: (email: string) => request<void>("DELETE", `/users/${enc(email)}`),
     changePassword: (current: string, next: string) =>
       request<void>("POST", "/account/password", { current, next }),
   };

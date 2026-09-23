@@ -14,12 +14,12 @@ import (
 )
 
 var (
-	ErrInvalidUsername  = errors.New("invalid username")
+	ErrInvalidEmail     = errors.New("invalid email address")
 	ErrPasswordTooShort = errors.New("password too short")
 	ErrPasswordTooLong  = errors.New("password too long")
-	ErrUserExists       = errors.New("username taken")
+	ErrUserExists       = errors.New("email already registered")
 	ErrNoSuchUser       = errors.New("no such user")
-	ErrBadCredentials   = errors.New("wrong username or password")
+	ErrBadCredentials   = errors.New("wrong email or password")
 )
 
 const (
@@ -29,18 +29,24 @@ const (
 
 type User struct {
 	ID        int64
-	Username  string
+	Email     string
 	CreatedAt time.Time
 }
 
-var usernameRE = regexp.MustCompile(`^[a-z0-9._-]{1,32}$`)
+// MaxEmailBytes is the longest address a mail system will route (RFC 5321).
+const MaxEmailBytes = 254
 
-func NormalizeUsername(s string) (string, error) {
-	u := strings.ToLower(strings.TrimSpace(s))
-	if !usernameRE.MatchString(u) {
-		return "", ErrInvalidUsername
+// emailRE is deliberately loose: one @, no spaces, a dot in the domain. The
+// address is an account name here, never mailed to.
+var emailRE = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+
+// NormalizeEmail trims and lowercases an address and checks its shape.
+func NormalizeEmail(s string) (string, error) {
+	e := strings.ToLower(strings.TrimSpace(s))
+	if len(e) > MaxEmailBytes || !emailRE.MatchString(e) {
+		return "", ErrInvalidEmail
 	}
-	return u, nil
+	return e, nil
 }
 
 func ValidatePassword(p string) error {
@@ -73,7 +79,7 @@ var (
 )
 
 // dummyCompare spends the same bcrypt time as a real check so unknown
-// usernames can't be told apart by response time.
+// email addresses can't be told apart by response time.
 func (db *DB) dummyCompare(password string) {
 	dummyOnce.Do(func() {
 		h, _ := db.hash("glim-dummy-password-for-timing")
@@ -82,8 +88,8 @@ func (db *DB) dummyCompare(password string) {
 	_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 }
 
-func (db *DB) CreateUser(ctx context.Context, username, password string) (User, error) {
-	u, err := NormalizeUsername(username)
+func (db *DB) CreateUser(ctx context.Context, email, password string) (User, error) {
+	u, err := NormalizeEmail(email)
 	if err != nil {
 		return User{}, err
 	}
@@ -97,10 +103,10 @@ func (db *DB) CreateUser(ctx context.Context, username, password string) (User, 
 	return db.insertUser(ctx, db.sql, u, h)
 }
 
-func (db *DB) insertUser(ctx context.Context, q querier, username, hash string) (User, error) {
+func (db *DB) insertUser(ctx context.Context, q querier, email, hash string) (User, error) {
 	created := db.now().Unix()
 	res, err := q.ExecContext(ctx,
-		`INSERT INTO users(username, password_hash, created_at) VALUES (?, ?, ?)`, username, hash, created)
+		`INSERT INTO users(email, password_hash, created_at) VALUES (?, ?, ?)`, email, hash, created)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return User{}, ErrUserExists
@@ -111,7 +117,7 @@ func (db *DB) insertUser(ctx context.Context, q querier, username, hash string) 
 	if err != nil {
 		return User{}, err
 	}
-	return User{ID: id, Username: username, CreatedAt: time.Unix(created, 0).UTC()}, nil
+	return User{ID: id, Email: email, CreatedAt: time.Unix(created, 0).UTC()}, nil
 }
 
 func (db *DB) CountUsers(ctx context.Context) (int, error) {
@@ -121,7 +127,7 @@ func (db *DB) CountUsers(ctx context.Context) (int, error) {
 }
 
 func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := db.sql.QueryContext(ctx, `SELECT id, username, created_at FROM users ORDER BY username`)
+	rows, err := db.sql.QueryContext(ctx, `SELECT id, email, created_at FROM users ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +136,7 @@ func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var created int64
-		if err := rows.Scan(&u.ID, &u.Username, &created); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &created); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = time.Unix(created, 0).UTC()
@@ -139,15 +145,15 @@ func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
 	return out, rows.Err()
 }
 
-func (db *DB) GetUser(ctx context.Context, username string) (User, error) {
-	u, err := NormalizeUsername(username)
+func (db *DB) GetUser(ctx context.Context, email string) (User, error) {
+	u, err := NormalizeEmail(email)
 	if err != nil {
 		return User{}, ErrNoSuchUser
 	}
 	var user User
 	var created int64
 	err = db.sql.QueryRowContext(ctx,
-		`SELECT id, username, created_at FROM users WHERE username = ?`, u).Scan(&user.ID, &user.Username, &created)
+		`SELECT id, email, created_at FROM users WHERE email = ?`, u).Scan(&user.ID, &user.Email, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNoSuchUser
 	}
@@ -158,8 +164,8 @@ func (db *DB) GetUser(ctx context.Context, username string) (User, error) {
 	return user, nil
 }
 
-func (db *DB) Authenticate(ctx context.Context, username, password string) (User, error) {
-	u, err := NormalizeUsername(username)
+func (db *DB) Authenticate(ctx context.Context, email, password string) (User, error) {
+	u, err := NormalizeEmail(email)
 	if err != nil {
 		db.dummyCompare(password)
 		return User{}, ErrBadCredentials
@@ -168,8 +174,8 @@ func (db *DB) Authenticate(ctx context.Context, username, password string) (User
 	var hash string
 	var created int64
 	err = db.sql.QueryRowContext(ctx,
-		`SELECT id, username, password_hash, created_at FROM users WHERE username = ?`, u).
-		Scan(&user.ID, &user.Username, &hash, &created)
+		`SELECT id, email, password_hash, created_at FROM users WHERE email = ?`, u).
+		Scan(&user.ID, &user.Email, &hash, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		db.dummyCompare(password)
 		return User{}, ErrBadCredentials
@@ -184,12 +190,12 @@ func (db *DB) Authenticate(ctx context.Context, username, password string) (User
 	return user, nil
 }
 
-func (db *DB) DeleteUser(ctx context.Context, username string) error {
-	u, err := NormalizeUsername(username)
+func (db *DB) DeleteUser(ctx context.Context, email string) error {
+	u, err := NormalizeEmail(email)
 	if err != nil {
 		return ErrNoSuchUser
 	}
-	res, err := db.sql.ExecContext(ctx, `DELETE FROM users WHERE username = ?`, u)
+	res, err := db.sql.ExecContext(ctx, `DELETE FROM users WHERE email = ?`, u)
 	if err != nil {
 		return err
 	}
@@ -201,8 +207,8 @@ func (db *DB) DeleteUser(ctx context.Context, username string) error {
 
 // SetPassword replaces a user's password (operator recovery) and signs that
 // user out everywhere.
-func (db *DB) SetPassword(ctx context.Context, username, password string) error {
-	user, err := db.GetUser(ctx, username)
+func (db *DB) SetPassword(ctx context.Context, email, password string) error {
+	user, err := db.GetUser(ctx, email)
 	if err != nil {
 		return err
 	}

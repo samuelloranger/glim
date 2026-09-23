@@ -10,7 +10,7 @@ import (
 )
 
 type userJSON struct {
-	Username  string    `json:"username"`
+	Email     string    `json:"email"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -19,7 +19,7 @@ type sessionJSON struct {
 	CSRF string   `json:"csrf"`
 }
 
-func toUserJSON(u auth.User) userJSON { return userJSON{Username: u.Username, CreatedAt: u.CreatedAt} }
+func toUserJSON(u auth.User) userJSON { return userJSON{Email: u.Email, CreatedAt: u.CreatedAt} }
 
 func (s *Server) getSetup(w http.ResponseWriter, r *http.Request) {
 	n, err := s.d.Auth.CountUsers(r.Context())
@@ -36,23 +36,14 @@ func (s *Server) postSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Code     string `json:"code"`
-		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	ip := clientIP(r)
-	if wait := s.d.Limiter.Check("", ip); wait > 0 {
-		tooMany(w, wait)
-		return
-	}
-	user, err := s.d.Auth.CompleteSetup(r.Context(), s.d.SetupCodePath, body.Code, body.Username, body.Password)
+	user, err := s.d.Auth.CompleteSetup(r.Context(), body.Email, body.Password)
 	if err != nil {
-		if errors.Is(err, auth.ErrBadSetupCode) {
-			s.d.Limiter.Fail("", ip)
-		}
 		s.fail(w, err)
 		return
 	}
@@ -66,13 +57,13 @@ func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	name := strings.ToLower(strings.TrimSpace(body.Username))
+	name := strings.ToLower(strings.TrimSpace(body.Email))
 	ip := clientIP(r)
 	if wait := s.d.Limiter.Check(name, ip); wait > 0 {
 		tooMany(w, wait)

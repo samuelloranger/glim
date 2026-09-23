@@ -27,7 +27,6 @@ type Deps struct {
 	Auth          *auth.DB
 	Limiter       *auth.Limiter
 	Hub           *Hub
-	SetupCodePath string
 	SecureCookies bool
 	Logf          func(format string, args ...any)
 	// SSE timings; zero selects 25s keep-alive pings and 2s session checks.
@@ -83,7 +82,7 @@ func (s *Server) routes() {
 	m.Handle("GET /_glim/api/events", s.authed(s.getEvents))
 	m.Handle("GET /_glim/api/users", s.authed(s.getUsers))
 	m.Handle("POST /_glim/api/users", s.authed(s.postUser))
-	m.Handle("DELETE /_glim/api/users/{name}", s.authed(s.deleteUser))
+	m.Handle("DELETE /_glim/api/users/{email}", s.authed(s.deleteUser))
 	m.Handle("POST /_glim/api/account/password", s.authed(s.postPassword))
 	m.HandleFunc("/_glim/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not_found", "No such endpoint.")
@@ -176,22 +175,20 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 // fail maps domain errors to user-facing responses; anything else is a 500.
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, auth.ErrInvalidUsername):
-		writeErr(w, 400, "invalid", "Usernames use 1–32 lowercase letters, digits, dots, underscores or hyphens.")
+	case errors.Is(err, auth.ErrInvalidEmail):
+		writeErr(w, 400, "invalid", "Enter a valid email address.")
 	case errors.Is(err, auth.ErrPasswordTooShort):
 		writeErr(w, 400, "invalid", fmt.Sprintf("Passwords need at least %d characters.", auth.MinPasswordChars))
 	case errors.Is(err, auth.ErrPasswordTooLong):
 		writeErr(w, 400, "invalid", fmt.Sprintf("Passwords can be at most %d bytes.", auth.MaxPasswordBytes))
 	case errors.Is(err, auth.ErrUserExists):
-		writeErr(w, 409, "conflict", "That username is taken.")
+		writeErr(w, 409, "conflict", "That email address already has an account.")
 	case errors.Is(err, auth.ErrNoSuchUser):
 		writeErr(w, 404, "not_found", "No such user.")
-	case errors.Is(err, auth.ErrBadSetupCode):
-		writeErr(w, 400, "invalid", "That setup code doesn't match. Check the glim serve log.")
 	case errors.Is(err, auth.ErrSetupDone):
 		writeErr(w, 409, "conflict", "Setup is already complete. Sign in instead.")
 	case errors.Is(err, auth.ErrBadCredentials):
-		writeErr(w, 401, "unauthorized", "Wrong username or password.")
+		writeErr(w, 401, "unauthorized", "Wrong email or password.")
 	default:
 		s.internal(w, err)
 	}

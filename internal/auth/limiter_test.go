@@ -44,7 +44,7 @@ func TestLimiterPerIPWindow(t *testing.T) {
 	c := &clock{t: time.Unix(1_000_000, 0)}
 	l := NewLimiter(c.now)
 	for i := 0; i < 20; i++ {
-		l.Fail("", "9.9.9.9") // e.g. setup-code guesses
+		l.Fail("", "9.9.9.9") // failures not tied to one account
 		c.advance(time.Second)
 	}
 	w := l.Check("anyone", "9.9.9.9")

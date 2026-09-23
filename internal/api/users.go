@@ -22,13 +22,13 @@ func (s *Server) getUsers(w http.ResponseWriter, r *http.Request, _ auth.Session
 
 func (s *Server) postUser(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	var body struct {
-		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	u, err := s.d.Auth.CreateUser(r.Context(), body.Username, body.Password)
+	u, err := s.d.Auth.CreateUser(r.Context(), body.Email, body.Password)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -37,12 +37,12 @@ func (s *Server) postUser(w http.ResponseWriter, r *http.Request, _ auth.Session
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, sess auth.Session) {
-	name, err := auth.NormalizeUsername(r.PathValue("name"))
+	name, err := auth.NormalizeEmail(r.PathValue("email"))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	if name == sess.User.Username {
+	if name == sess.User.Email {
 		writeErr(w, http.StatusConflict, "conflict", "You can't remove your own account.")
 		return
 	}
