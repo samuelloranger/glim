@@ -23,6 +23,10 @@ Previews run as an isolated (opaque) origin: scripts, forms, pop-ups and
 downloads work, but `localStorage`, `sessionStorage` and cookies are
 unavailable — code that touches them without a `try`/`catch` will throw.
 
+The site root serves the [dashboard](./dashboard.md). Its API lives under
+`/_glim/`, and its live updates use Server-Sent Events. A standard reverse proxy
+(including the `glim caddy` snippet) needs no extra configuration for them.
+
 ## Run it as a service
 
 `contrib/glim.service` is a systemd user unit:
@@ -64,3 +68,6 @@ A preview's URL has a readable slug plus a short random suffix. That is enough t
 avoid collisions and casual guessing, but it is **not a secret**. Keep the proxy
 behind your usual access controls (a private network, an auth layer, or a
 firewall) for anything you would not put on the open web.
+
+The dashboard itself requires an account, but preview links stay public by
+design. Anyone with a link can open that preview.

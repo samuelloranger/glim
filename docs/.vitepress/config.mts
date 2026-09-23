@@ -24,6 +24,7 @@ export default defineConfig({
           { text: "Getting started", link: "/getting-started" },
           { text: "CLI reference", link: "/cli" },
           { text: "Preview lifecycle", link: "/lifecycle" },
+          { text: "Dashboard", link: "/dashboard" },
           { text: "Configuration", link: "/config" },
           { text: "Serving & reverse proxy", link: "/serving" },
           { text: "Agent integration (MCP)", link: "/agents" },
