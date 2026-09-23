@@ -73,11 +73,15 @@ export function createLive(deps: LiveDeps) {
       setConn("reconnecting");
       if (es.readyState !== ES.CLOSED) return; // the browser retries on its own
       es.close();
+      // Only the chain for the current stream may reopen: stop()/resume() while
+      // this check is in flight has already replaced or retired `es`.
+      const current = () => !stopped && source === es;
       deps.api.session().then(
         () => {
-          retry = setTimeout(open, retryMs);
+          if (current()) retry = setTimeout(open, retryMs);
         },
         (err: unknown) => {
+          if (!current()) return;
           if (err instanceof ApiError && err.status === 401) deps.onUnauthorized();
           else retry = setTimeout(open, retryMs);
         },

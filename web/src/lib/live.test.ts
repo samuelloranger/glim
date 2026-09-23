@@ -177,3 +177,23 @@ test("resume (tab visible again) replaces a possibly dead stream", () => {
     dispose();
   });
 });
+
+test("resume during a pending reconnect check leaves exactly one stream", async () => {
+  await createRoot(async (dispose) => {
+    let release!: () => void;
+    const pending = new Promise<unknown>((r) => {
+      release = () => r({});
+    });
+    const { live } = setup(() => pending);
+    live.start();
+    FakeES.instances[0]?.fail(true); // stream died; session check now in flight
+    live.resume(); // user comes back to the tab before the check answers
+    release();
+    await tick();
+    const open = () => FakeES.instances.filter((es) => es.readyState !== FakeES.CLOSED).length;
+    expect(open()).toBe(1);
+    live.stop();
+    expect(open()).toBe(0);
+    dispose();
+  });
+});
