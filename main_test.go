@@ -76,3 +76,17 @@ func TestSplitEntry(t *testing.T) {
 		})
 	}
 }
+
+func TestPublicHost(t *testing.T) {
+	cases := map[string]string{
+		"":                               "",
+		"https://glim.example.com":       "glim.example.com",
+		"https://glim.example.com:8443/": "glim.example.com:8443",
+		"http://127.0.0.1:8787":          "127.0.0.1:8787",
+	}
+	for in, want := range cases {
+		if got := publicHost(in); got != want {
+			t.Errorf("publicHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

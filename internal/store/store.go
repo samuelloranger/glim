@@ -1,6 +1,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +11,27 @@ import (
 	"strings"
 	"time"
 )
+
+// Fingerprint is a cheap digest of which previews exist and when their
+// manifests last changed; callers compare it to skip unchanged rescans.
+func (s *Store) Fingerprint() (string, error) {
+	entries, err := os.ReadDir(s.Root)
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	h := sha256.New()
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		info, err := os.Stat(filepath.Join(s.Root, e.Name(), ManifestFile))
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(h, "%s %d %d\n", e.Name(), info.ModTime().UnixNano(), info.Size())
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 
 type Store struct {
 	Root    string
@@ -150,6 +173,19 @@ func (s *Store) Get(name string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("no such preview: %s", name)
 	}
 	return m, nil
+}
+
+// Live returns the manifest of a preview that may be served right now: the
+// name is a valid slug, its manifest exists, and it has not expired.
+func (s *Store) Live(name string) (Manifest, bool) {
+	if !ValidName(name) {
+		return Manifest{}, false
+	}
+	m, err := readManifest(filepath.Join(s.Root, name))
+	if err != nil || m.Expired(s.now()) {
+		return Manifest{}, false
+	}
+	return m, true
 }
 
 func (s *Store) Pin(name string) error {

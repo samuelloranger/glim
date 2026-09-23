@@ -10,9 +10,26 @@ glim serve
 ```
 
 It binds `bind:port` from config (default `127.0.0.1:8787`) and serves previews
-from `root`. It serves each preview's files and its `index.html`, never lists a
-directory, and returns 404 for the site root. State is written to
-`~/.glim/serve.json` so a `--local` publish can find and reuse it.
+from `root`. It serves each live preview's files and its `index.html`, never
+lists a directory, never serves dot-prefixed paths (such as `.glim.json` or
+`.env`), and returns 404 for a preview whose lifetime has elapsed, even before it
+is garbage-collected. The server also prunes expired previews once a minute.
+State is written to `~/.glim/serve.json` so a `--local` publish can find and
+reuse it.
+
+Every preview response carries
+`Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads`.
+Previews run as an isolated (opaque) origin: scripts, forms, pop-ups and
+downloads work, but `localStorage`, `sessionStorage` and cookies are
+unavailable — code that touches them without a `try`/`catch` will throw.
+
+The site root serves the [dashboard](./dashboard.md). Its API lives under
+`/_glim/`, and its live updates use Server-Sent Events. A standard reverse proxy
+(including the `glim caddy` snippet) needs no extra configuration for them.
+
+Set `--domain` to the public URL when you use a proxy. Sign-in and dashboard
+actions check the browser's `Origin` against it, so they keep working behind
+proxies that rewrite the `Host` header without sending `X-Forwarded-Host`.
 
 ## Run it as a service
 
@@ -55,3 +72,6 @@ A preview's URL has a readable slug plus a short random suffix. That is enough t
 avoid collisions and casual guessing, but it is **not a secret**. Keep the proxy
 behind your usual access controls (a private network, an auth layer, or a
 firewall) for anything you would not put on the open web.
+
+The dashboard itself requires an account, but preview links stay public by
+design. Anyone with a link can open that preview.

@@ -125,3 +125,15 @@ glim for previews. See [Agent integration](/agents).
 ```sh
 glim version
 ```
+
+## user
+
+```sh
+glim user ls                # list dashboard accounts
+glim user passwd <email>    # set a new password (prompts twice); signs that user out everywhere
+glim user rm <email>        # remove an account and its sessions
+```
+
+Use these from a shell on the server to recover access to the dashboard. If
+you remove the last account, the dashboard offers the "Create your account"
+form again.

@@ -1,0 +1,47 @@
+@font-face {
+  font-family: "Mona Sans";
+  src: url("../fonts/mona-sans-latin-wdth-normal.woff2") format("woff2-variations");
+  font-weight: 200 900;
+  font-stretch: 75% 125%;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --night: #05070e;
+  --lid: #0f1526;
+  --lid-2: #161d33;
+  --line: #1f2840;
+  --iris: #818cf8;
+  --iris-ink: #05070e;
+  --glint: #e2e8f0;
+  --haze: #94a3b8;
+  --ember: #f5a524;
+  --danger: #f87171;
+
+  --font: "Mona Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+  --step--1: 13px;
+  --step-0: 15px;
+  --step-1: 18px;
+  --step-2: 24px;
+  --r-window: 12px;
+  --r-control: 8px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --night: #f6f7fb;
+    --lid: #e9ecf5;
+    --lid-2: #dde2ef;
+    --line: #cfd5e4;
+    --iris: #4f46e5;
+    --iris-ink: #ffffff;
+    --glint: #0f1526;
+    --haze: #5b6478;
+    --ember: #b45309;
+    --danger: #b91c1c;
+  }
+}
