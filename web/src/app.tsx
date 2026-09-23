@@ -1,5 +1,6 @@
 import { createMemo, createSignal, Match, onSettled, Switch } from "solid-js";
 import { AuthShell } from "./components/AuthShell";
+import { Dashboard } from "./components/Dashboard";
 import { LoginForm } from "./components/LoginForm";
 import { SetupForm } from "./components/SetupForm";
 import { ApiError, api, errorText } from "./lib/api";
@@ -84,11 +85,11 @@ export function App() {
       </Match>
       <Match when={appUser()}>
         {(user) => (
-          <AuthShell title={`Signed in as ${user().username}`}>
-            <button class="btn" type="button" onClick={() => void signOut()}>
-              Sign out
-            </button>
-          </AuthShell>
+          <Dashboard
+            user={user()}
+            onSignOut={() => void signOut()}
+            onSessionEnded={() => signedOut("Your session ended. Sign in again.")}
+          />
         )}
       </Match>
     </Switch>
