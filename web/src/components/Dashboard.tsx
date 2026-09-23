@@ -78,6 +78,13 @@ export function Dashboard(props: {
     const exp = actions.overrides[soonest.name]?.expires ?? soonest.expires;
     return { title: displayTitle(soonest), left: formatLeft(Date.parse(exp) - clock.now()) };
   });
+  // A plain string, not a <Show> narrowed accessor: pinning or removing the last
+  // expiring preview flips next() to undefined, and reading a narrowed accessor
+  // after its condition turns falsy is a fatal stale read in Solid 2.
+  const nextLine = createMemo(() => {
+    const n = next();
+    return n ? `${n.title} fades in ${n.left}` : "";
+  });
 
   async function copy(p: Preview) {
     try {
@@ -104,12 +111,8 @@ export function Dashboard(props: {
       />
       <div class="toolbar">
         <Filters value={filters()} projects={projects()} onChange={setFilters} />
-        <Show when={next()}>
-          {(n) => (
-            <p class="next">
-              {n().title} fades in {n().left}
-            </p>
-          )}
+        <Show when={nextLine()}>
+          <p class="next">{nextLine()}</p>
         </Show>
       </div>
       <Show when={live.state.loaded} fallback={<p class="help pad">Loading previews…</p>}>

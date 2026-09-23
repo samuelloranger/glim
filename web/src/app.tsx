@@ -73,20 +73,20 @@ export function App() {
       <Match when={loginNotice() !== undefined}>
         <LoginForm notice={loginNotice() || undefined} onDone={signedIn} />
       </Match>
-      <Match when={offline()}>
+      <Match when={offline()} keyed>
         {(message) => (
           <AuthShell title="Can't reach glim">
-            <p class="help">{message()}</p>
+            <p class="help">{message}</p>
             <button class="btn" type="button" onClick={() => void boot()}>
               Try again
             </button>
           </AuthShell>
         )}
       </Match>
-      <Match when={appUser()}>
+      <Match when={appUser()} keyed>
         {(user) => (
           <Dashboard
-            user={user()}
+            user={user}
             onSignOut={() => void signOut()}
             onSessionEnded={() => signedOut("Your session ended. Sign in again.")}
           />
