@@ -114,3 +114,13 @@ func firstEnv(keys ...string) string {
 	}
 	return ""
 }
+
+func DBPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".glim", "glim.db")
+}
+
+func SetupCodePath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".glim", "setup-code")
+}
