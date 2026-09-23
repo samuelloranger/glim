@@ -101,6 +101,18 @@ test("the API refuses anonymous requests", async ({ request }) => {
   expect(res.status()).toBe(401);
 });
 
+test("the account panel shows its own feedback above the dialog", async () => {
+  await page.getByRole("button", { name: EMAIL, exact: true }).click();
+  const panel = page.getByRole("dialog", { name: `Signed in as ${EMAIL}` });
+  await expect(panel).toBeVisible();
+  await panel.getByLabel("Email").fill("amy@example.com");
+  await panel.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await panel.getByRole("button", { name: "Add person" }).click();
+  // Rendered inside the modal dialog, so it is above the backdrop and not inert.
+  await expect(panel.getByText("Added amy@example.com")).toBeVisible();
+  await panel.getByRole("button", { name: "Close" }).click();
+});
+
 test("sign out and back in", async () => {
   await page.getByRole("button", { name: EMAIL, exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Sign out" }).click();

@@ -27,6 +27,10 @@ The site root serves the [dashboard](./dashboard.md). Its API lives under
 `/_glim/`, and its live updates use Server-Sent Events. A standard reverse proxy
 (including the `glim caddy` snippet) needs no extra configuration for them.
 
+Set `--domain` to the public URL when you use a proxy. Sign-in and dashboard
+actions check the browser's `Origin` against it, so they keep working behind
+proxies that rewrite the `Host` header without sending `X-Forwarded-Host`.
+
 ## Run it as a service
 
 `contrib/glim.service` is a systemd user unit:

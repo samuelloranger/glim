@@ -98,7 +98,15 @@ export function createLive(deps: LiveDeps) {
     return stop;
   }
 
-  return { state, conn, skew, apply, patch, drop, refresh, start, stop };
+  // After sleep a mobile browser can keep a dead socket in OPEN state without
+  // firing "error". Replace the stream outright; its first snapshot is the refresh.
+  function resume() {
+    stop();
+    setConn("reconnecting");
+    start();
+  }
+
+  return { state, conn, skew, apply, patch, drop, refresh, start, stop, resume };
 }
 
 export type Live = ReturnType<typeof createLive>;

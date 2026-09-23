@@ -39,7 +39,7 @@ export function Dashboard(props: {
     const stopLive = live.start();
     const stopClock = clock.start();
     const onVisible = () => {
-      if (document.visibilityState === "visible") void live.refresh();
+      if (document.visibilityState === "visible") live.resume();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -182,9 +182,11 @@ export function Dashboard(props: {
         user={props.user}
         onClose={() => setAccountOpen(false)}
         onSignOut={() => props.onSignOut()}
-        toast={toasts.show}
+        toasts={toasts}
       />
-      <ToastList toasts={toasts} />
+      <Show when={!accountOpen()}>
+        <ToastList toasts={toasts} />
+      </Show>
     </div>
   );
 }

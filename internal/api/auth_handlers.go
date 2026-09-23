@@ -31,7 +31,7 @@ func (s *Server) getSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) postSetup(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
+	if !s.sameOrigin(r) {
 		writeErr(w, http.StatusForbidden, "forbidden", "This request was blocked. Reload the page and try again.")
 		return
 	}
@@ -52,7 +52,7 @@ func (s *Server) postSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
-	if !sameOrigin(r) {
+	if !s.sameOrigin(r) {
 		writeErr(w, http.StatusForbidden, "forbidden", "This request was blocked. Reload the page and try again.")
 		return
 	}

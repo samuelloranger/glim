@@ -163,3 +163,17 @@ test("refresh (tab visible again) refetches and applies", async () => {
     dispose();
   });
 });
+
+test("resume (tab visible again) replaces a possibly dead stream", () => {
+  createRoot((dispose) => {
+    const { live } = setup();
+    live.start();
+    const first = FakeES.instances[0];
+    live.resume();
+    expect(first?.readyState).toBe(FakeES.CLOSED);
+    expect(FakeES.instances.length).toBe(2);
+    expect(FakeES.instances[1]?.readyState).toBe(FakeES.CONNECTING);
+    live.stop();
+    dispose();
+  });
+});

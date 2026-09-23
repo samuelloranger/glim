@@ -28,7 +28,11 @@ type Deps struct {
 	Limiter       *auth.Limiter
 	Hub           *Hub
 	SecureCookies bool
-	Logf          func(format string, args ...any)
+	// PublicHost is the host of the configured public domain (e.g.
+	// "glim.example.com"). An Origin on that host is always same-origin, even
+	// when a reverse proxy rewrites Host and sends no X-Forwarded-Host.
+	PublicHost string
+	Logf       func(format string, args ...any)
 	// SSE timings; zero selects 25s keep-alive pings and 2s session checks.
 	PingEvery  time.Duration
 	CheckEvery time.Duration
@@ -112,7 +116,7 @@ func (s *Server) authed(h sessionHandler) http.Handler {
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			got := r.Header.Get("X-Glim-CSRF")
-			if subtle.ConstantTimeCompare([]byte(got), []byte(sess.CSRF)) != 1 || !sameOrigin(r) {
+			if subtle.ConstantTimeCompare([]byte(got), []byte(sess.CSRF)) != 1 || !s.sameOrigin(r) {
 				writeErr(w, http.StatusForbidden, "forbidden", "This request was blocked. Reload the page and try again.")
 				return
 			}
@@ -273,9 +277,10 @@ func requestHost(r *http.Request) string {
 	return r.Host
 }
 
-// sameOrigin accepts a missing Origin; "null" (sandboxed documents) and any
-// other host are rejected.
-func sameOrigin(r *http.Request) bool {
+// sameOrigin accepts a missing Origin, the request's own host, or the
+// configured public host; "null" (sandboxed documents) and anything else are
+// rejected.
+func (s *Server) sameOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
@@ -283,6 +288,9 @@ func sameOrigin(r *http.Request) bool {
 	u, err := url.Parse(origin)
 	if err != nil || u.Host == "" {
 		return false
+	}
+	if s.d.PublicHost != "" && strings.EqualFold(u.Host, s.d.PublicHost) {
+		return true
 	}
 	return strings.EqualFold(u.Host, requestHost(r))
 }

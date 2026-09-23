@@ -103,3 +103,27 @@ func TestOriginViaTrustedForwardedHost(t *testing.T) {
 		t.Fatalf("untrusted X-Forwarded-Host = %d, want 403", rec.Code)
 	}
 }
+
+// A reverse proxy that rewrites Host to the upstream and sends no
+// X-Forwarded-Host (nginx's default proxy_pass) must still accept requests
+// whose Origin is the configured public domain.
+func TestOriginMatchesConfiguredDomainBehindHostRewritingProxy(t *testing.T) {
+	rewritten := map[string]string{"RemoteAddr": "127.0.0.1:5555", "Host": "127.0.0.1:8787"}
+
+	bare := newEnv(t)
+	s := bare.signIn("sam@example.com")
+	if rec := bare.do(http.MethodPost, "/_glim/api/logout", nil, &s, rewritten); rec.Code != 403 {
+		t.Fatalf("without a configured domain = %d, want 403", rec.Code)
+	}
+
+	e := newEnvWith(t, func(d *Deps) { d.PublicHost = "glim.example.com" })
+	s = e.signIn("sam@example.com")
+	if rec := e.do(http.MethodPost, "/_glim/api/logout", nil, &s, rewritten); rec.Code != 204 {
+		t.Fatalf("Origin = configured domain = %d, want 204 (%s)", rec.Code, rec.Body.String())
+	}
+	s2, _ := e.db.CreateSession(t.Context(), s.User)
+	foreign := map[string]string{"RemoteAddr": "127.0.0.1:5555", "Host": "127.0.0.1:8787", "Origin": "https://evil.example"}
+	if rec := e.do(http.MethodPost, "/_glim/api/logout", nil, &s2, foreign); rec.Code != 403 {
+		t.Fatalf("foreign origin with configured domain = %d, want 403", rec.Code)
+	}
+}

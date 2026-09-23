@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -334,6 +335,7 @@ func cmdServe(args []string) error {
 	apiSrv := api.New(api.Deps{
 		Store: st, Auth: db, Limiter: auth.NewLimiter(nil), Hub: hub,
 		SecureCookies: strings.HasPrefix(base, "https://"),
+		PublicHost:    publicHost(base),
 		Logf:          log.Printf,
 	})
 	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler()})
@@ -560,6 +562,18 @@ func readPassword(in *bufio.Reader, prompt string) (string, error) {
 func homeDir() string {
 	h, _ := os.UserHomeDir()
 	return h
+}
+
+// publicHost is the host[:port] of the configured domain, or "" when none is set.
+func publicHost(base string) string {
+	if base == "" {
+		return ""
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return ""
+	}
+	return u.Host
 }
 
 func hostFromBase(base string) string {

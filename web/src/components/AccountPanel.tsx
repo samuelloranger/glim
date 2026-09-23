@@ -1,13 +1,15 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { api, errorText } from "../lib/api";
+import type { Toasts } from "../lib/toasts";
 import type { User } from "../lib/types";
+import { ToastList } from "./Toasts";
 
 export function AccountPanel(props: {
   open: boolean;
   user: User;
   onClose: () => void;
   onSignOut: () => void;
-  toast: (text: string, tone?: "info" | "error") => void;
+  toasts: Toasts;
 }) {
   let dialog: HTMLDialogElement | undefined;
   const [users, setUsers] = createSignal<User[]>([]);
@@ -24,7 +26,7 @@ export function AccountPanel(props: {
     try {
       setUsers((await api.users()).users);
     } catch (e) {
-      props.toast(errorText(e), "error");
+      props.toasts.show(errorText(e), "error");
     }
   }
 
@@ -52,7 +54,7 @@ export function AccountPanel(props: {
       setCurrent("");
       setNext("");
       setConfirmNext("");
-      props.toast("Password changed. Other devices were signed out.");
+      props.toasts.show("Password changed. Other devices were signed out.");
     } catch (err) {
       setPwError(errorText(err));
     }
@@ -65,7 +67,7 @@ export function AccountPanel(props: {
       const u = await api.addUser(newName(), newPass());
       setNewName("");
       setNewPass("");
-      props.toast(`Added ${u.email}`);
+      props.toasts.show(`Added ${u.email}`);
       await loadUsers();
     } catch (err) {
       setAddError(errorText(err));
@@ -76,10 +78,10 @@ export function AccountPanel(props: {
     setRemoving(null);
     try {
       await api.removeUser(email);
-      props.toast(`Removed ${email}`);
+      props.toasts.show(`Removed ${email}`);
       await loadUsers();
     } catch (err) {
-      props.toast(errorText(err), "error");
+      props.toasts.show(errorText(err), "error");
     }
   }
 
@@ -228,6 +230,10 @@ export function AccountPanel(props: {
           </button>
         </form>
       </section>
+      {/* A modal dialog makes the page inert and covers it; show feedback in here. */}
+      <Show when={props.open}>
+        <ToastList toasts={props.toasts} />
+      </Show>
     </dialog>
   );
 }
