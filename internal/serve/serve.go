@@ -8,19 +8,44 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/samuelloranger/glim/internal/store"
 )
 
-func Handler(root string) http.Handler {
-	fs := http.FileServer(noListFS{http.Dir(root)})
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
+// PreviewCSP runs every preview as an opaque origin, top-level or framed, so a
+// preview's scripts can never act with the dashboard's origin.
+const PreviewCSP = "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+
+// PreviewHandler serves live previews from st.Root. Unknown, invalid or
+// expired slugs, directory listings and any dot-prefixed path segment 404.
+func PreviewHandler(st *store.Store) http.Handler {
+	files := http.FileServer(noListFS{http.Dir(st.Root)})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hasDotSegment(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
-		fs.ServeHTTP(w, r)
+		slug, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if _, ok := st.Live(slug); !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Security-Policy", PreviewCSP)
+		files.ServeHTTP(w, r)
 	})
-	return mux
+}
+
+func hasDotSegment(p string) bool {
+	for _, seg := range strings.Split(p, "/") {
+		if strings.HasPrefix(seg, ".") {
+			return true
+		}
+	}
+	return false
+}
+
+func Handler(root string) http.Handler {
+	return PreviewHandler(store.New(root, ""))
 }
 
 func Serve(root, bind string, port int) error {

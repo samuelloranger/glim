@@ -5,18 +5,47 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/samuelloranger/glim/internal/store"
 )
 
-func TestHandlerServesSlugIndexButNotRootOrListing(t *testing.T) {
-	root := t.TempDir()
-	slug := filepath.Join(root, "demo-1234")
-	os.MkdirAll(slug, 0o755)
-	os.WriteFile(filepath.Join(slug, "index.html"), []byte("<h1>demo</h1>"), 0o644)
-	os.WriteFile(filepath.Join(slug, "app.js"), []byte("console.log(1)"), 0o644)
+func publish(t *testing.T, st *store.Store, name string, files map[string]string, ttl time.Duration) {
+	t.Helper()
+	src := t.TempDir()
+	for rel, body := range files {
+		p := filepath.Join(src, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.Publish(src, "", "", "", ttl, name); err != nil {
+		t.Fatal(err)
+	}
+}
 
-	srv := httptest.NewServer(Handler(root))
-	defer srv.Close()
+func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
+}
+
+func TestPreviewHandlerServesLivePreviewWithSandbox(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	publish(t, st, "demo-1234", map[string]string{
+		"index.html":     "<h1>demo</h1>",
+		"app.js":         "console.log(1)",
+		".env":           "SECRET=1",
+		".git/config":    "x",
+		"assets/.hidden": "x",
+	}, time.Hour)
+	h := PreviewHandler(st)
 
 	cases := []struct {
 		path string
@@ -25,37 +54,56 @@ func TestHandlerServesSlugIndexButNotRootOrListing(t *testing.T) {
 	}{
 		{"/demo-1234/", 200, "<h1>demo</h1>"},
 		{"/demo-1234/app.js", 200, "console.log(1)"},
-		{"/", 404, ""},          // no root index
-		{"/nope-9999/", 404, ""}, // unknown slug
+		{"/demo-1234/.glim.json", 404, ""},
+		{"/demo-1234/.env", 404, ""},
+		{"/demo-1234/.git/config", 404, ""},
+		{"/demo-1234/assets/.hidden", 404, ""},
+		{"/", 404, ""},
+		{"/nope-9999/", 404, ""},
+		{"/UPPER/", 404, ""},
 	}
 	for _, c := range cases {
-		resp, err := http.Get(srv.URL + c.path)
-		if err != nil {
-			t.Fatal(err)
+		rec := get(t, h, c.path)
+		if rec.Code != c.want {
+			t.Errorf("GET %s = %d, want %d", c.path, rec.Code, c.want)
 		}
-		if resp.StatusCode != c.want {
-			t.Errorf("GET %s = %d, want %d", c.path, resp.StatusCode, c.want)
+		if c.body != "" && !strings.Contains(rec.Body.String(), c.body) {
+			t.Errorf("GET %s body = %q, want %q", c.path, rec.Body.String(), c.body)
 		}
-		resp.Body.Close()
+		if c.want == 200 && rec.Header().Get("Content-Security-Policy") != PreviewCSP {
+			t.Errorf("GET %s CSP = %q, want %q", c.path, rec.Header().Get("Content-Security-Policy"), PreviewCSP)
+		}
 	}
 }
 
-func TestHandlerDeniesDirWithoutIndex(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "noidx")
-	os.MkdirAll(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("x"), 0o644)
-
-	srv := httptest.NewServer(Handler(root))
-	defer srv.Close()
-
-	// The dir has no index.html -> listing denied (404), but a named file inside
-	// is still reachable (it's static content the publisher chose to include).
-	resp, _ := http.Get(srv.URL + "/noidx/")
-	if resp.StatusCode != 404 {
-		t.Errorf("dir listing = %d, want 404", resp.StatusCode)
+func TestPreviewHandlerHidesExpiredBeforeGC(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	now := time.Now()
+	st.Now = func() time.Time { return now }
+	publish(t, st, "old-abcd", map[string]string{"index.html": "old"}, time.Minute)
+	h := PreviewHandler(st)
+	if rec := get(t, h, "/old-abcd/"); rec.Code != 200 {
+		t.Fatalf("live = %d, want 200", rec.Code)
 	}
-	resp.Body.Close()
+	now = now.Add(2 * time.Minute)
+	if rec := get(t, h, "/old-abcd/"); rec.Code != 404 {
+		t.Fatalf("expired = %d, want 404", rec.Code)
+	}
+	if _, err := os.Stat(filepath.Join(st.Root, "old-abcd")); err != nil {
+		t.Fatal("dir should still exist (not yet GC'd):", err)
+	}
+}
+
+func TestPreviewHandlerDeniesDirWithoutIndex(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	publish(t, st, "site-abcd", map[string]string{"index.html": "root", "sub/file.txt": "x"}, time.Hour)
+	h := PreviewHandler(st)
+	if rec := get(t, h, "/site-abcd/sub/"); rec.Code != 404 {
+		t.Errorf("dir listing = %d, want 404", rec.Code)
+	}
+	if rec := get(t, h, "/site-abcd/sub/file.txt"); rec.Code != 200 {
+		t.Errorf("named file = %d, want 200", rec.Code)
+	}
 }
 
 func TestStateRoundTrip(t *testing.T) {

@@ -316,3 +316,32 @@ func TestGetAndDiskUsage(t *testing.T) {
 		t.Fatalf("disk usage = %d, want > 0", n)
 	}
 }
+
+func TestLive(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return now }
+	entry := writeTemp(t, "p.html", "<p>x</p>")
+	res, err := s.Publish(entry, "Live test", "", "", time.Hour, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.Live(res.Name); !ok {
+		t.Fatal("fresh preview should be live")
+	}
+	for _, bad := range []string{"", "..", "../x", "UPPER", "a/b", ".glim.json", "nope-zzzz"} {
+		if _, ok := s.Live(bad); ok {
+			t.Errorf("Live(%q) = true, want false", bad)
+		}
+	}
+	now = now.Add(2 * time.Hour)
+	if _, ok := s.Live(res.Name); ok {
+		t.Fatal("expired preview should not be live")
+	}
+	if err := s.Pin(res.Name); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.Live(res.Name); !ok {
+		t.Fatal("pinned preview should be live even past expiry")
+	}
+}

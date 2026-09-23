@@ -152,6 +152,19 @@ func (s *Store) Get(name string) (Manifest, error) {
 	return m, nil
 }
 
+// Live returns the manifest of a preview that may be served right now: the
+// name is a valid slug, its manifest exists, and it has not expired.
+func (s *Store) Live(name string) (Manifest, bool) {
+	if !ValidName(name) {
+		return Manifest{}, false
+	}
+	m, err := readManifest(filepath.Join(s.Root, name))
+	if err != nil || m.Expired(s.now()) {
+		return Manifest{}, false
+	}
+	return m, true
+}
+
 func (s *Store) Pin(name string) error {
 	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
