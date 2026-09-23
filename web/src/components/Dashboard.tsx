@@ -14,6 +14,7 @@ import { displayTitle } from "../lib/preview";
 import { formatLeft } from "../lib/time";
 import { createToasts } from "../lib/toasts";
 import type { Preview, User } from "../lib/types";
+import { AccountPanel } from "./AccountPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Filters } from "./Filters";
 import { PreviewCard } from "./PreviewCard";
@@ -32,6 +33,7 @@ export function Dashboard(props: {
   const [filters, setFilters] = createSignal<FilterValue>(filtersFromSearch(location.search));
   const [confirming, setConfirming] = createSignal<Preview | null>(null);
   const [ready, setReady] = createSignal(false);
+  const [accountOpen, setAccountOpen] = createSignal(false);
 
   onSettled(() => {
     const stopLive = live.start();
@@ -97,8 +99,8 @@ export function Dashboard(props: {
       <StatusBar
         conn={live.conn()}
         status={live.state.status}
-        accountLabel="Sign out"
-        onAccount={() => props.onSignOut()}
+        accountLabel={props.user.username}
+        onAccount={() => setAccountOpen(true)}
       />
       <div class="toolbar">
         <Filters value={filters()} projects={projects()} onChange={setFilters} />
@@ -114,10 +116,12 @@ export function Dashboard(props: {
         <Show
           when={live.state.previews.length > 0}
           fallback={
-            <p class="empty">
-              Nothing to see yet. Publish a page with <code>glim page.html</code> and it appears
-              here.
-            </p>
+            <div class="empty">
+              <p>
+                Nothing to see yet. Publish a page with <code>glim page.html</code> and it appears
+                here.
+              </p>
+            </div>
           }
         >
           <Show
@@ -169,6 +173,13 @@ export function Dashboard(props: {
         confirmLabel="Remove"
         onConfirm={confirmRemove}
         onCancel={() => setConfirming(null)}
+      />
+      <AccountPanel
+        open={accountOpen()}
+        user={props.user}
+        onClose={() => setAccountOpen(false)}
+        onSignOut={() => props.onSignOut()}
+        toast={toasts.show}
       />
       <ToastList toasts={toasts} />
     </div>
