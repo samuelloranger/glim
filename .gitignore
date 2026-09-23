@@ -5,3 +5,5 @@ SPEC.md
 node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+web/test-results/
+web/playwright-report/

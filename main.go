@@ -26,6 +26,7 @@ import (
 	"github.com/samuelloranger/glim/internal/mcpserver"
 	"github.com/samuelloranger/glim/internal/serve"
 	"github.com/samuelloranger/glim/internal/store"
+	"github.com/samuelloranger/glim/internal/web"
 	"golang.org/x/term"
 )
 
@@ -339,7 +340,7 @@ func cmdServe(args []string) error {
 		SecureCookies: strings.HasPrefix(base, "https://"),
 		Logf:          log.Printf,
 	})
-	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv})
+	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler()})
 }
 
 func cmdCaddy() error {
