@@ -144,3 +144,24 @@ select {
 .logo.glance .logo-glint {
   transform: translate(-3px, 1px);
 }
+
+.auth {
+  display: grid;
+  gap: 20px;
+  width: min(360px, calc(100% - 32px));
+  margin: 12vh auto 48px;
+}
+
+.auth h1 {
+  font-size: var(--step-2);
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-form .btn.primary,
+.auth > .btn {
+  justify-self: start;
+}

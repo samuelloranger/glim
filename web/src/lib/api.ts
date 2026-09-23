@@ -83,3 +83,7 @@ export function createApi(fetchFn: typeof fetch = fetch) {
 
 export type Api = ReturnType<typeof createApi>;
 export const api = createApi();
+
+export function errorText(e: unknown): string {
+  return e instanceof ApiError ? e.message : "Something went wrong. Try again.";
+}

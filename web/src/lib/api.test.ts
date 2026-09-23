@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ApiError, createApi } from "./api";
+import { ApiError, createApi, errorText } from "./api";
 
 type Call = { url: string; init: RequestInit };
 
@@ -58,4 +58,11 @@ test("network failure is a readable ApiError", async () => {
   const err = (await api.previews().catch((e: unknown) => e)) as ApiError;
   expect(err.status).toBe(0);
   expect(err.message).toContain("Can't reach the glim server");
+});
+
+test("errorText prefers the server's message", () => {
+  expect(errorText(new ApiError(400, "invalid", "That setup code doesn't match."))).toBe(
+    "That setup code doesn't match.",
+  );
+  expect(errorText(new Error("boom"))).toBe("Something went wrong. Try again.");
 });
