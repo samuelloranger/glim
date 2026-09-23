@@ -345,3 +345,30 @@ func TestLive(t *testing.T) {
 		t.Fatal("pinned preview should be live even past expiry")
 	}
 }
+
+func TestFingerprintTracksChanges(t *testing.T) {
+	s := newTestStore(t)
+	empty, err := s.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := writeTemp(t, "p.html", "x")
+	res, _ := s.Publish(entry, "Fp", "", "", time.Hour, "")
+	one, _ := s.Fingerprint()
+	if one == empty {
+		t.Fatal("publish did not change fingerprint")
+	}
+	if again, _ := s.Fingerprint(); again != one {
+		t.Fatal("fingerprint not stable")
+	}
+	time.Sleep(5 * time.Millisecond)
+	s.Pin(res.Name)
+	pinned, _ := s.Fingerprint()
+	if pinned == one {
+		t.Fatal("manifest rewrite did not change fingerprint")
+	}
+	s.Remove(res.Name)
+	if gone, _ := s.Fingerprint(); gone != empty {
+		t.Fatal("remove should restore the empty fingerprint")
+	}
+}

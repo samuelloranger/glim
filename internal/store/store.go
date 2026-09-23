@@ -1,6 +1,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +11,27 @@ import (
 	"strings"
 	"time"
 )
+
+// Fingerprint is a cheap digest of which previews exist and when their
+// manifests last changed; callers compare it to skip unchanged rescans.
+func (s *Store) Fingerprint() (string, error) {
+	entries, err := os.ReadDir(s.Root)
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	h := sha256.New()
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		info, err := os.Stat(filepath.Join(s.Root, e.Name(), ManifestFile))
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(h, "%s %d %d\n", e.Name(), info.ModTime().UnixNano(), info.Size())
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 
 type Store struct {
 	Root    string

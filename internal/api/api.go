@@ -26,6 +26,7 @@ type Deps struct {
 	Store         *store.Store
 	Auth          *auth.DB
 	Limiter       *auth.Limiter
+	Hub           *Hub
 	SetupCodePath string
 	SecureCookies bool
 	Logf          func(format string, args ...any)
@@ -37,6 +38,12 @@ type Deps struct {
 type Server struct {
 	d   Deps
 	mux *http.ServeMux
+}
+
+func (s *Server) poke() {
+	if s.d.Hub != nil {
+		s.d.Hub.Poke()
+	}
 }
 
 func New(d Deps) *Server {
