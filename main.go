@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/mdp/qrterminal/v3"
+	"github.com/samuelloranger/glim/internal/api"
 	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/caddy"
 	"github.com/samuelloranger/glim/internal/config"
@@ -305,7 +307,39 @@ func cmdServe(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	return serve.Serve(*root, *bind, *port)
+	ctx := context.Background()
+	base := ""
+	if cfg.Domain != "" {
+		base = cfg.BaseURL()
+	}
+	st := store.New(*root, base)
+
+	db, err := auth.Open(config.DBPath())
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	code, err := db.EnsureSetupCode(ctx, config.SetupCodePath())
+	if err != nil {
+		return err
+	}
+	shownBase := base
+	if shownBase == "" {
+		shownBase = serve.BaseURL(*port)
+	}
+	if code != "" {
+		log.Printf("setup code: %s — open %s/ to create your account", auth.FormatSetupCode(code), shownBase)
+	}
+
+	hub := api.NewHub(st, db, 2*time.Second, log.Printf)
+	go hub.Run(ctx)
+	apiSrv := api.New(api.Deps{
+		Store: st, Auth: db, Limiter: auth.NewLimiter(nil), Hub: hub,
+		SetupCodePath: config.SetupCodePath(),
+		SecureCookies: strings.HasPrefix(base, "https://"),
+		Logf:          log.Printf,
+	})
+	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv})
 }
 
 func cmdCaddy() error {

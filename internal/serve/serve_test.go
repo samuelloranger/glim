@@ -151,3 +151,30 @@ func TestRunGCPrunesExpired(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestRouterZones(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	publish(t, st, "demo-1234", map[string]string{"index.html": "preview"}, time.Hour)
+	tag := func(name string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(name)) })
+	}
+	h := NewRouter(Options{Store: st, API: tag("api"), Web: tag("web")})
+	cases := map[string]string{
+		"/":                    "web",
+		"/_glim/assets/app.js": "web",
+		"/_glim/icon.svg":      "web",
+		"/_glim/api/session":   "api",
+		"/demo-1234/":          "preview",
+	}
+	for path, want := range cases {
+		if got := get(t, h, path).Body.String(); !strings.Contains(got, want) {
+			t.Errorf("GET %s → %q, want %q", path, got, want)
+		}
+	}
+	bare := NewRouter(Options{Store: st})
+	for _, p := range []string{"/", "/_glim/api/session", "/_glim/x"} {
+		if rec := get(t, bare, p); rec.Code != 404 {
+			t.Errorf("nil handler %s = %d, want 404", p, rec.Code)
+		}
+	}
+}

@@ -47,10 +47,6 @@ func hasDotSegment(p string) bool {
 	return false
 }
 
-func Handler(root string) http.Handler {
-	return PreviewHandler(store.New(root, ""))
-}
-
 // RunGC prunes expired previews every interval until ctx is cancelled, so an
 // expired preview's files disappear even when nothing new is published.
 func RunGC(ctx context.Context, st *store.Store, every time.Duration, logf func(string, ...any)) {
@@ -71,22 +67,64 @@ func RunGC(ctx context.Context, st *store.Store, every time.Duration, logf func(
 	}
 }
 
-func Serve(root, bind string, port int) error {
-	if err := os.MkdirAll(root, 0o755); err != nil {
+type Options struct {
+	Bind  string
+	Port  int
+	Store *store.Store
+	API   http.Handler // serves /_glim/api/*
+	Web   http.Handler // serves / and the rest of /_glim/*
+}
+
+func NewRouter(o Options) http.Handler {
+	previews := PreviewHandler(o.Store)
+	zone := func(h http.Handler, w http.ResponseWriter, r *http.Request) {
+		if h == nil {
+			http.NotFound(w, r)
+			return
+		}
+		h.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		switch {
+		case strings.HasPrefix(p, "/_glim/api/"):
+			zone(o.API, w, r)
+		case p == "/" || strings.HasPrefix(p, "/_glim/"):
+			zone(o.Web, w, r)
+		default:
+			previews.ServeHTTP(w, r)
+		}
+	})
+}
+
+func Serve(ctx context.Context, o Options) error {
+	if err := os.MkdirAll(o.Store.Root, 0o755); err != nil {
 		return err
 	}
+	bind := o.Bind
 	if bind == "" {
 		bind = "127.0.0.1"
 	}
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bind, port))
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bind, o.Port))
 	if err != nil {
 		return err
 	}
 	actual := ln.Addr().(*net.TCPAddr).Port
-	_ = WriteState(State{Port: actual, PID: os.Getpid(), Root: root})
-	fmt.Printf("glim serving %s on %s:%d\n", root, bind, actual)
-	go RunGC(context.Background(), store.New(root, ""), time.Minute, log.Printf)
-	return http.Serve(ln, Handler(root))
+	if o.Store.BaseURL == "" {
+		o.Store.BaseURL = BaseURL(actual)
+	}
+	_ = WriteState(State{Port: actual, PID: os.Getpid(), Root: o.Store.Root})
+	fmt.Printf("glim serving %s on %s:%d\n", o.Store.Root, bind, actual)
+	go RunGC(ctx, o.Store, time.Minute, log.Printf)
+	srv := &http.Server{Handler: NewRouter(o), ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		<-ctx.Done()
+		srv.Close()
+	}()
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }
 
 func BaseURL(port int) string { return fmt.Sprintf("http://127.0.0.1:%d", port) }
