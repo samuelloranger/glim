@@ -126,7 +126,7 @@ export function AccountPanel(props: {
               class="input"
               type="password"
               autocomplete="new-password"
-              minlength="12"
+              minlength="8"
               required
               value={next()}
               onInput={(e) => setNext(e.currentTarget.value)}
@@ -214,7 +214,7 @@ export function AccountPanel(props: {
               class="input"
               type="password"
               autocomplete="new-password"
-              minlength="12"
+              minlength="8"
               required
               value={newPass()}
               onInput={(e) => setNewPass(e.currentTarget.value)}

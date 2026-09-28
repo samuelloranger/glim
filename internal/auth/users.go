@@ -23,7 +23,7 @@ var (
 )
 
 const (
-	MinPasswordChars = 12
+	MinPasswordChars = 8
 	MaxPasswordBytes = 72 // bcrypt's input limit; longer is rejected, never truncated
 )
 
