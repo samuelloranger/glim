@@ -9,7 +9,7 @@ about two seconds without a reload.
 ## First sign-in
 
 While no account exists, the dashboard shows a "Create your account" form.
-Enter an email address and a password (at least 12 characters). That becomes
+Enter an email address and a password (at least 8 characters). That becomes
 the first account; the form is gone for as long as any account exists.
 
 Whoever reaches the dashboard first creates that account. Create it right after

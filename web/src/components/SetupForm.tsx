@@ -52,7 +52,7 @@ export function SetupForm(props: { onDone: (info: SessionInfo) => void }) {
             class="input"
             type="password"
             autocomplete="new-password"
-            minlength="12"
+            minlength="8"
             required
             value={password()}
             onInput={(e) => setPassword(e.currentTarget.value)}
@@ -61,7 +61,7 @@ export function SetupForm(props: { onDone: (info: SessionInfo) => void }) {
             aria-describedby="setup-password-help"
           />
           <p id="setup-password-help" class="help">
-            At least 12 characters.
+            At least 8 characters.
           </p>
         </div>
         <div class="field">
