@@ -2,6 +2,7 @@ package serve
 
 import (
 	"bufio"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -204,5 +205,57 @@ func TestLiveScriptNotInUnlockPage(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "EventSource") {
 		t.Error("unlock page must not carry the live script")
+	}
+}
+
+// A manifest-only change (extend) leaves the HTML mtime alone but changes the
+// injected ?v=, so a conditional GET must not be answered with 304.
+func TestLiveConditionalGetAfterManifestOnlyChange(t *testing.T) {
+	st, _, srv := liveEnv(t)
+	resp := openLive(t, srv, "/_glim/live/demo-1234")
+	ch := lines(resp)
+	waitFor(t, ch, ": ok")
+
+	first, err := http.Get(srv.URL + "/demo-1234/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b1, _ := io.ReadAll(first.Body)
+	first.Body.Close()
+	if cc := first.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("Cache-Control = %q", cc)
+	}
+	etag, lm := first.Header.Get("ETag"), first.Header.Get("Last-Modified")
+	if etag == "" {
+		t.Fatal("missing ETag")
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+	if err := st.Extend("demo-1234", 3*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, ch, "event: changed")
+
+	for _, hdr := range []map[string]string{
+		{"If-None-Match": etag},
+		{"If-Modified-Since": time.Now().UTC().Format(http.TimeFormat)},
+		{"If-None-Match": etag, "If-Modified-Since": lm},
+	} {
+		req, _ := http.NewRequest("GET", srv.URL+"/demo-1234/", nil)
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b2, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		if r.StatusCode != 200 {
+			t.Fatalf("%v: status %d, want 200", hdr, r.StatusCode)
+		}
+		if string(b2) == string(b1) {
+			t.Fatalf("%v: body still has the old ?v=", hdr)
+		}
 	}
 }

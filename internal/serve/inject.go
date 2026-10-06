@@ -2,6 +2,8 @@ package serve
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"regexp"
 	"strings"
@@ -231,6 +233,18 @@ func serveHTMLInjected(w http.ResponseWriter, r *http.Request, fsys http.FileSys
 	head, body := inj(buf)
 	out := injectHTML(buf, head, body)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeContent(w, r, "", st.ModTime(), bytes.NewReader(out))
+	mod := st.ModTime()
+	if len(head) > 0 || len(body) > 0 {
+		// The injected snippet carries a version that changes without the
+		// HTML file's mtime changing (pin, extend, lock only rewrite the
+		// manifest), so validate on the injected bytes, never on mtime.
+		sum := sha256.Sum256(out)
+		w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:16])+`"`)
+		w.Header().Set("Cache-Control", "no-cache")
+		// mtime cannot validate this body; drop the date validator.
+		r = r.Clone(r.Context())
+		r.Header.Del("If-Modified-Since")
+	}
+	http.ServeContent(w, r, "", mod, bytes.NewReader(out))
 	return true
 }

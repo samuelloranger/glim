@@ -45,7 +45,9 @@ dashboard thumbnails. glim inserts a small inline script before `</body>` of eac
 served HTML page; it opens an `EventSource` to `/_glim/live/<slug>` and calls
 `location.reload()` when the stream reports `changed`. It is wrapped in an IIFE,
 reconnects with backoff, and stops after repeated failures or a `gone` event
-(the preview was removed or expired). The password unlock page never gets it.
+(the preview was removed or expired). The password unlock page never gets it. Pages that carry the script are served
+with `Cache-Control: no-cache` and an `ETag` of the injected bytes, so a reload
+after a pin, extend or lock change is never answered with a stale `304`.
 
 The stream endpoint is public, needs no cookie, and answers with
 `Access-Control-Allow-Origin: *` because previews run in an opaque origin. It
