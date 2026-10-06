@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -57,5 +58,47 @@ func TestLimiterPerIPWindow(t *testing.T) {
 	c.advance(15 * time.Minute)
 	if w := l.Check("anyone", "9.9.9.9"); w != 0 {
 		t.Fatalf("after window = %v", w)
+	}
+}
+
+func TestLimiterEvictsIdleEntries(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	l := NewLimiter(c.now)
+	for i := 0; i < 50; i++ {
+		l.Fail(fmt.Sprintf("user%d", i), fmt.Sprintf("10.0.0.%d", i))
+	}
+	size := func() (int, int) {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		return len(l.users), len(l.ips)
+	}
+	if u, i := size(); u != 50 || i != 50 {
+		t.Fatalf("tracked = %d users, %d ips", u, i)
+	}
+	// Nothing touches the entries again; a later request for someone else
+	// triggers the periodic sweep once they are all idle.
+	c.advance(sweepEvery + userMaxBackoff + time.Second)
+	l.Check("someone", "192.0.2.1")
+	if u, i := size(); u != 0 || i != 0 {
+		t.Fatalf("after idle sweep = %d users, %d ips, want 0, 0", u, i)
+	}
+}
+
+func TestLimiterSweepKeepsActiveIPs(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	l := NewLimiter(c.now)
+	l.Check("", "")
+	l.Fail("", "1.1.1.1")
+	c.advance(ipWindow - time.Minute)
+	l.Fail("", "2.2.2.2")
+	c.advance(time.Minute) // 1.1.1.1 is now a full window old
+	l.Check("", "")
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.ips["1.1.1.1"]; ok {
+		t.Error("idle ip kept")
+	}
+	if _, ok := l.ips["2.2.2.2"]; !ok {
+		t.Error("recent ip evicted")
 	}
 }

@@ -226,6 +226,17 @@ func WriteState(s State) error {
 	return os.WriteFile(p, data, 0o644)
 }
 
+// HTTPSNote is a one-line reminder for an https domain: glim itself only speaks
+// plain http, so it must sit behind a proxy that terminates TLS and sends
+// X-Forwarded-Proto. Empty when the domain isn't https.
+func HTTPSNote(domain string) string {
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(domain)), "https://") {
+		return ""
+	}
+	return "domain is https but glim serves plain http; reach it through a TLS-terminating " +
+		"proxy that sends X-Forwarded-Proto: https (see docs/serving.md)"
+}
+
 func ReadState() (State, bool) {
 	var s State
 	data, err := os.ReadFile(StatePath())

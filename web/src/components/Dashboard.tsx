@@ -39,7 +39,8 @@ export function Dashboard(props: {
     const stopLive = live.start();
     const stopClock = clock.start();
     const onVisible = () => {
-      if (document.visibilityState === "visible") live.resume();
+      if (document.visibilityState === "visible") live.show();
+      else live.hide();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -71,8 +72,8 @@ export function Dashboard(props: {
   const next = createMemo(() => {
     let soonest: Preview | undefined;
     for (const p of live.state.previews) {
-      if (p.pinned || actions.overrides[p.name]?.pinned) continue;
-      if (!soonest || p.expires < soonest.expires) soonest = p;
+      if (p.pinned || actions.overrides[p.name]?.pinned || live.leaving[p.name]) continue;
+      if (!soonest || Date.parse(p.expires) < Date.parse(soonest.expires)) soonest = p;
     }
     if (!soonest) return undefined;
     const exp = actions.overrides[soonest.name]?.expires ?? soonest.expires;
@@ -152,6 +153,7 @@ export function Dashboard(props: {
                   <PreviewCard
                     preview={p}
                     override={actions.overrides[p.name]}
+                    gone={live.leaving[p.name] === true}
                     now={clock.now()}
                     arriving={ready()}
                     onExtend={(ttl, label) => void actions.extend(p.name, ttl, label)}

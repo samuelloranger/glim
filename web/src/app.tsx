@@ -4,6 +4,7 @@ import { Dashboard } from "./components/Dashboard";
 import { LoginForm } from "./components/LoginForm";
 import { SetupForm } from "./components/SetupForm";
 import { ApiError, api, errorText } from "./lib/api";
+import { screenAfterSignOut } from "./lib/signout";
 import type { SessionInfo, User } from "./lib/types";
 
 type Screen =
@@ -35,7 +36,11 @@ export function App() {
 
   function signedOut(notice?: string) {
     api.setCsrf("");
+    // Show sign-in right away; swap to setup if the last account is gone.
     setScreen({ kind: "login", notice });
+    void screenAfterSignOut(api, notice).then((next) => {
+      if (next.kind === "setup" && screen().kind === "login") setScreen(next);
+    });
   }
 
   async function signOut() {

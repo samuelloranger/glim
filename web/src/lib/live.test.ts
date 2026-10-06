@@ -107,7 +107,9 @@ test("snapshots reconcile by name and only touch changed previews", () => {
     expect(live.state.previews[0]?.created).toBe("2026-01-01T03:00:00Z");
     es.emit(snap([preview("b")]));
     flush();
-    expect(live.state.previews.map((p) => p.name)).toEqual(["b"]);
+    // A removed card lingers (flagged leaving) while its close animation plays.
+    expect(live.state.previews.map((p) => p.name)).toEqual(["a", "b"]);
+    expect(live.leaving.a).toBe(true);
     live.stop();
     dispose();
   });

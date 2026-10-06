@@ -11,6 +11,7 @@ const (
 	ipMaxFails     = 20
 	ipWindow       = 15 * time.Minute
 	maxTracked     = 10_000
+	sweepEvery     = ipWindow
 )
 
 type userFails struct {
@@ -25,6 +26,8 @@ type Limiter struct {
 	now   func() time.Time
 	users map[string]*userFails
 	ips   map[string][]time.Time
+	// lastSweep is when idle entries were last evicted; see maybeSweep.
+	lastSweep time.Time
 }
 
 func NewLimiter(now func() time.Time) *Limiter {
@@ -38,6 +41,7 @@ func (l *Limiter) Check(user, ip string) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
+	l.maybeSweep(now)
 	var wait time.Duration
 	if f := l.users[user]; user != "" && f != nil && f.count >= userFreeFails {
 		shift := f.count - userFreeFails
@@ -64,6 +68,7 @@ func (l *Limiter) Fail(user, ip string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
+	l.maybeSweep(now)
 	if user != "" {
 		f := l.users[user]
 		if f == nil {
@@ -109,5 +114,22 @@ func (l *Limiter) sweep(now time.Time) {
 		if now.Sub(f.last) > userMaxBackoff {
 			delete(l.users, u)
 		}
+	}
+}
+
+// maybeSweep evicts idle entries at most once per sweepEvery, so an address that
+// failed once and never returned can't stay in the map forever.
+func (l *Limiter) maybeSweep(now time.Time) {
+	if l.lastSweep.IsZero() {
+		l.lastSweep = now
+		return
+	}
+	if now.Sub(l.lastSweep) < sweepEvery {
+		return
+	}
+	l.lastSweep = now
+	l.sweep(now)
+	for ip := range l.ips {
+		l.pruneIP(ip, now)
 	}
 }

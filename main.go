@@ -393,7 +393,15 @@ func cmdStatus() error {
 		}
 	}
 	fmt.Printf("root:     %s\n", cfg.Root)
-	fmt.Printf("live:     %d preview(s) (%d pinned)\n", len(list), pinned)
+	state, haveState := serve.ReadState()
+	running := haveState && pidAlive(state.PID) && portOpen(state.Port)
+	fmt.Printf("server:   %s\n", serverLine(state, running))
+	if running {
+		if note := serve.HTTPSNote(cfg.Domain); note != "" {
+			fmt.Printf("note:     %s\n", note)
+		}
+	}
+	fmt.Printf("live:    %d preview(s) (%d pinned)\n", len(list), pinned)
 	fmt.Printf("disk:     %s\n", humanBytes(bytes))
 	if next.IsZero() {
 		fmt.Println("next gc:  none pending")
@@ -401,6 +409,14 @@ func cmdStatus() error {
 		fmt.Printf("next gc:  %s (in %s)\n", next.Format(time.RFC1123), short(time.Until(next)))
 	}
 	return nil
+}
+
+// serverLine describes the running server from its serve.json state.
+func serverLine(st serve.State, running bool) string {
+	if !running {
+		return "not running"
+	}
+	return fmt.Sprintf("running on port %d (pid %d)", st.Port, st.PID)
 }
 
 func humanBytes(n int64) string {
@@ -451,6 +467,9 @@ func cmdServe(args []string) error {
 	shownBase := base
 	if shownBase == "" {
 		shownBase = serve.BaseURL(*port)
+	}
+	if note := serve.HTTPSNote(base); note != "" {
+		log.Printf("note: %s", note)
 	}
 	if users == 0 {
 		log.Printf("no account yet — open %s/ to create the first one", shownBase)

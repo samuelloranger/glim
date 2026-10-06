@@ -96,6 +96,13 @@ Set `--domain` to the public URL when you use a proxy. Sign-in and dashboard
 actions check the browser's `Origin` against it, so they keep working behind
 proxies that rewrite the `Host` header without sending `X-Forwarded-Host`.
 
+When the domain is `https`, glim logs a one-line note at startup (and
+`glim status` repeats it). It also logs a single warning the first time a request
+arrives over plain http with no `X-Forwarded-Proto: https` (or `Forwarded:
+proto=https`) header. That usually means the proxy isn't terminating TLS or isn't
+forwarding the header, and browsers won't keep the `Secure` sign-in cookie over
+plain http.
+
 ## Run it as a service
 
 `contrib/glim.service` is a systemd user unit:

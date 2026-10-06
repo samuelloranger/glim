@@ -70,7 +70,9 @@ Removing the last account brings back the "Create your account" form.
 - Session cookies are `HttpOnly` and `SameSite=Strict`. They are scoped to the
   dashboard's own paths, so previews never receive them, and they are `Secure`
   when your domain uses `https`.
-- Repeated failed sign-ins are slowed down per account and per client address.
+- Repeated failed sign-ins, and repeated wrong "current password" guesses when
+  changing a password, are slowed down per account and per client address.
+  Idle entries are evicted periodically, so the tracking can't grow without bound.
   Behind a reverse proxy, the client address comes from `X-Forwarded-For`, but
   only when the proxy connects from a loopback or private address.
 - The `glim_owner` cookie is scoped to `/` so it reaches previews. It is a
