@@ -73,6 +73,9 @@ Removing the last account brings back the "Create your account" form.
 - Repeated failed sign-ins, and repeated wrong "current password" guesses when
   changing a password, are slowed down per account and per client address.
   Idle entries are evicted periodically, so the tracking can't grow without bound.
+  An account that has hit the throttle keeps its failure count through 24 hours
+  of inactivity (or until a successful sign-in), so waiting out the backoff does
+  not reset it.
   Behind a reverse proxy, the client address comes from `X-Forwarded-For`, but
   only when the proxy connects from a loopback or private address.
 - The `glim_owner` cookie is scoped to `/` so it reaches previews. It is a

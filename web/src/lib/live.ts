@@ -49,16 +49,23 @@ export function createLive(deps: LiveDeps) {
     const merged = [...snap.previews];
     state.previews.forEach((old, i) => {
       if (incoming.has(old.name)) {
-        if (leaving[old.name]) setLeaving((d) => void (d[old.name] = false));
+        if (leaving[old.name])
+          setLeaving((d) => {
+            d[old.name] = false;
+          });
         return;
       }
       merged.splice(Math.min(i, merged.length), 0, { ...old });
       if (leaving[old.name]) return;
       const name = old.name;
-      setLeaving((d) => void (d[name] = true));
+      setLeaving((d) => {
+        d[name] = true;
+      });
       setTimeout(() => {
         if (!leaving[name]) return;
-        setLeaving((d) => void (d[name] = false));
+        setLeaving((d) => {
+          d[name] = false;
+        });
         drop(name);
       }, closeMs);
     });

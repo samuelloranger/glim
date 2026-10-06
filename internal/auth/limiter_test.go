@@ -102,3 +102,30 @@ func TestLimiterSweepKeepsActiveIPs(t *testing.T) {
 		t.Error("recent ip evicted")
 	}
 }
+
+func TestLimiterSweepKeepsThrottledAccounts(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	l := NewLimiter(c.now)
+	for i := 0; i < 40; i++ {
+		l.Fail("sam", "")
+	}
+	if w := l.Check("sam", ""); w != userMaxBackoff {
+		t.Fatalf("cap = %v, want %v", w, userMaxBackoff)
+	}
+	// Idle past the backoff and past a sweep interval; a request from another
+	// client triggers the periodic sweep.
+	c.advance(30 * time.Minute)
+	if w := l.Check("amy", "9.9.9.9"); w != 0 {
+		t.Fatalf("other user blocked: %v", w)
+	}
+	l.Fail("sam", "8.8.8.8")
+	if w := l.Check("sam", "7.7.7.7"); w != userMaxBackoff {
+		t.Fatalf("throttled account reset by sweep: wait = %v, want %v", w, userMaxBackoff)
+	}
+	// After a long idle horizon the entry is finally evicted.
+	c.advance(userIdleHorizon + time.Hour)
+	l.Check("amy", "9.9.9.9")
+	if w := l.Check("sam", ""); w != 0 {
+		t.Fatalf("stale account kept: %v", w)
+	}
+}

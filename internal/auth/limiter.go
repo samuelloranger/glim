@@ -12,6 +12,9 @@ const (
 	ipWindow       = 15 * time.Minute
 	maxTracked     = 10_000
 	sweepEvery     = ipWindow
+	// userIdleHorizon is how long a throttled account's failure count survives
+	// without a new attempt before the periodic sweep evicts it.
+	userIdleHorizon = 24 * time.Hour
 )
 
 type userFails struct {
@@ -107,8 +110,9 @@ func (l *Limiter) pruneIP(ip string, now time.Time) []time.Time {
 	return fails
 }
 
-// sweep drops account entries whose backoff has fully elapsed, bounding memory
-// when an attacker sprays many addresses.
+// sweep is the emergency eviction at maxTracked: it drops every account entry
+// whose backoff has fully elapsed, bounding memory when an attacker sprays
+// many addresses.
 func (l *Limiter) sweep(now time.Time) {
 	for u, f := range l.users {
 		if now.Sub(f.last) > userMaxBackoff {
@@ -128,7 +132,14 @@ func (l *Limiter) maybeSweep(now time.Time) {
 		return
 	}
 	l.lastSweep = now
-	l.sweep(now)
+	for u, f := range l.users {
+		// Throttled accounts keep their count so rotating IPs and waiting out
+		// the backoff can't reset it; only a long idle horizon evicts them.
+		idle := now.Sub(f.last)
+		if (f.count < userFreeFails && idle > userMaxBackoff) || idle > userIdleHorizon {
+			delete(l.users, u)
+		}
+	}
 	for ip := range l.ips {
 		l.pruneIP(ip, now)
 	}
