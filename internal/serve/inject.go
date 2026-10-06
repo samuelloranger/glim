@@ -12,15 +12,14 @@ import (
 const maxInjectSize = 5 << 20
 
 var (
-	reHeadClose = regexp.MustCompile(`(?i)</head\s*>`)
 	reBodyClose = regexp.MustCompile(`(?i)</body\s*>`)
 	reHTMLOpen  = regexp.MustCompile(`(?i)<html(\s[^>]*)?>`)
 	reMetaTag   = regexp.MustCompile(`(?is)<meta\s[^>]*>`)
 	reMetaKey   = regexp.MustCompile(`(?is)\b(?:property|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))`)
 )
 
-// injectHTML inserts head just before the last </head> (falling back to right
-// after <html>, then the start of the document) and body just before the last
+// injectHTML inserts head just before the first real </head> (falling back to right
+// after <html>, then after the doctype) and body just before the last
 // </body> (falling back to the end). Empty snippets are skipped. Tag matching
 // is case-insensitive.
 func injectHTML(doc []byte, head, body string) []byte {
@@ -37,14 +36,119 @@ func injectHTML(doc []byte, head, body string) []byte {
 	return doc
 }
 
+// headPos returns where head tags go: before the first real </head> (ignoring
+// comments and script/style/textarea/title raw text), else right after the
+// <html> start tag, else after any BOM, whitespace, comments and doctype.
 func headPos(doc []byte) int {
-	if locs := reHeadClose.FindAllIndex(doc, -1); len(locs) > 0 {
-		return locs[len(locs)-1][0]
+	htmlEnd := -1
+	i := 0
+	for i < len(doc) {
+		j := bytes.IndexByte(doc[i:], '<')
+		if j < 0 {
+			break
+		}
+		i += j
+		rest := doc[i:]
+		if bytes.HasPrefix(rest, []byte("<!--")) {
+			i += skipComment(rest)
+			continue
+		}
+		if isTagAt(rest, "</head") {
+			return i
+		}
+		if htmlEnd < 0 {
+			if loc := reHTMLOpen.FindIndex(rest); loc != nil && loc[0] == 0 {
+				htmlEnd = i + loc[1]
+			}
+		}
+		if name := rawTextTag(rest); name != "" {
+			i += skipRawText(rest, name)
+			continue
+		}
+		i++
 	}
-	if loc := reHTMLOpen.FindIndex(doc); loc != nil {
-		return loc[1]
+	if htmlEnd >= 0 {
+		return htmlEnd
 	}
-	return 0
+	return preludeEnd(doc)
+}
+
+// skipComment returns the length of the comment at the start of rest.
+func skipComment(rest []byte) int {
+	if k := bytes.Index(rest[4:], []byte("-->")); k >= 0 {
+		return 4 + k + 3
+	}
+	return len(rest)
+}
+
+// isTagAt reports whether rest starts with prefix (case-insensitive) followed
+// by whitespace, '>' or '/'.
+func isTagAt(rest []byte, prefix string) bool {
+	n := len(prefix)
+	if len(rest) <= n || !strings.EqualFold(string(rest[:n]), prefix) {
+		return false
+	}
+	switch rest[n] {
+	case ' ', '\t', '\n', '\r', '\f', '>', '/':
+		return true
+	}
+	return false
+}
+
+var rawTextTags = []string{"script", "style", "textarea", "title"}
+
+// rawTextTag returns the element name when rest starts a raw-text element.
+func rawTextTag(rest []byte) string {
+	for _, n := range rawTextTags {
+		if isTagAt(rest, "<"+n) {
+			return n
+		}
+	}
+	return ""
+}
+
+// skipRawText returns how far to advance past the start tag and content of a
+// raw-text element, stopping at its closing tag.
+func skipRawText(rest []byte, name string) int {
+	close := "</" + name
+	for k := 1; k < len(rest); {
+		j := bytes.IndexByte(rest[k:], '<')
+		if j < 0 {
+			break
+		}
+		k += j
+		if isTagAt(rest[k:], close) {
+			return k
+		}
+		k++
+	}
+	return len(rest)
+}
+
+// preludeEnd returns the offset after a leading BOM, whitespace, comments and
+// doctype, so a head snippet never lands in front of the doctype.
+func preludeEnd(doc []byte) int {
+	i := 0
+	if bytes.HasPrefix(doc, []byte("\xef\xbb\xbf")) {
+		i = 3
+	}
+	for i < len(doc) {
+		switch {
+		case doc[i] == ' ' || doc[i] == '\t' || doc[i] == '\n' || doc[i] == '\r' || doc[i] == '\f':
+			i++
+		case bytes.HasPrefix(doc[i:], []byte("<!--")):
+			i += skipComment(doc[i:])
+		case len(doc[i:]) >= 9 && strings.EqualFold(string(doc[i:i+9]), "<!doctype"):
+			k := bytes.IndexByte(doc[i:], '>')
+			if k < 0 {
+				return len(doc)
+			}
+			i += k + 1
+		default:
+			return i
+		}
+	}
+	return i
 }
 
 func insertAt(doc []byte, s string, pos int) []byte {
