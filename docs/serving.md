@@ -23,6 +23,20 @@ Previews run as an isolated (opaque) origin: scripts, forms, pop-ups and
 downloads work, but `localStorage`, `sessionStorage` and cookies are
 unavailable — code that touches them without a `try`/`catch` will throw.
 
+Previews are kept out of search engines: every preview response carries
+`X-Robots-Tag: noindex, nofollow`, and `/robots.txt` serves `Disallow: /`.
+
+## Link preview cards
+
+When a preview's HTML page (`index.html` or any `.html` file, up to 5 MB) is
+fetched, glim inserts Open Graph and Twitter tags before `</head>` so a pasted
+link unfurls in chat and email: `og:title` (the preview's title, else its slug),
+`og:description` (the project, when set, plus "expires in ..." or "pinned"),
+`og:site_name`, `og:type`, `og:url`, `og:image` and `twitter:card`. The image is
+a fixed card served at `/_glim/og.png`. A tag the page already declares is never
+overridden or duplicated. Larger and non-HTML files are streamed unchanged, and
+`HEAD` and `Range` requests keep working.
+
 The site root serves the [dashboard](./dashboard.md). Its API lives under
 `/_glim/`, and its live updates use Server-Sent Events. A standard reverse proxy
 (including the `glim caddy` snippet) needs no extra configuration for them.
