@@ -11,7 +11,7 @@ import (
 const maxTTL = 8760 * time.Hour
 
 func (s *Server) getPreviews(w http.ResponseWriter, r *http.Request, _ auth.Session) {
-	snap, err := BuildSnapshot(s.d.Store)
+	snap, err := BuildSnapshot(s.d.Store, s.d.Auth)
 	if err != nil {
 		s.internal(w, err)
 		return
@@ -40,7 +40,7 @@ func (s *Server) respondPreview(w http.ResponseWriter, name string) {
 		return
 	}
 	s.poke()
-	writeJSON(w, http.StatusOK, toPreview(s.d.Store, m))
+	writeJSON(w, http.StatusOK, toPreview(s.d.Store, m, viewStats(s.d.Auth)[name]))
 }
 
 func (s *Server) postExtend(w http.ResponseWriter, r *http.Request, _ auth.Session) {

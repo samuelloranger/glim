@@ -24,7 +24,7 @@ func publishPreview(t *testing.T, st *store.Store, title string, ttl time.Durati
 
 func TestBuildSnapshot(t *testing.T) {
 	st := store.New(t.TempDir(), "https://glim.example.com")
-	snap, err := BuildSnapshot(st)
+	snap, err := BuildSnapshot(st, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestBuildSnapshot(t *testing.T) {
 	short := publishPreview(t, st, "Short", time.Hour)
 	long := publishPreview(t, st, "Long", 5*time.Hour)
 	st.Pin(long)
-	snap, _ = BuildSnapshot(st)
+	snap, _ = BuildSnapshot(st, nil)
 	if snap.Status.Live != 2 || snap.Status.Pinned != 1 || snap.Status.DiskBytes <= 0 {
 		t.Fatalf("status = %+v", snap.Status)
 	}

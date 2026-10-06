@@ -88,6 +88,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user auth.
 		return
 	}
 	s.setSessionCookie(w, sess)
+	s.setOwnerCookie(w, sess)
 	writeJSON(w, status, sessionJSON{User: toUserJSON(user), CSRF: sess.CSRF})
 }
 
@@ -97,6 +98,7 @@ func (s *Server) postLogout(w http.ResponseWriter, r *http.Request, sess auth.Se
 		return
 	}
 	s.clearCookie(w)
+	s.clearOwnerCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -104,5 +106,6 @@ func (s *Server) postLogout(w http.ResponseWriter, r *http.Request, sess auth.Se
 // sliding server-side expiry.
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request, sess auth.Session) {
 	s.setSessionCookie(w, sess)
+	s.setOwnerCookie(w, sess)
 	writeJSON(w, http.StatusOK, sessionJSON{User: toUserJSON(sess.User), CSRF: sess.CSRF})
 }

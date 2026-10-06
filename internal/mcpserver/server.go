@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/store"
 )
 
@@ -28,11 +29,13 @@ type ListInput struct {
 }
 
 type PreviewInfo struct {
-	Name    string `json:"name"`
-	URL     string `json:"url"`
-	Title   string `json:"title,omitempty"`
-	Project string `json:"project,omitempty"`
-	Expires string `json:"expires" jsonschema:"RFC3339 expiry time"`
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Title    string `json:"title,omitempty"`
+	Project  string `json:"project,omitempty"`
+	Expires  string `json:"expires" jsonschema:"RFC3339 expiry time"`
+	Views    int64  `json:"views" jsonschema:"how many times the link was opened in a browser (bots, the owner and dashboard thumbnails excluded)"`
+	LastSeen string `json:"lastSeen,omitempty" jsonschema:"RFC3339 time of the latest open; omitted if never opened"`
 }
 
 type ListOutput struct {
@@ -47,7 +50,8 @@ type RevokeOutput struct {
 	Revoked string `json:"revoked" jsonschema:"the revoked preview slug"`
 }
 
-func listPreviews(s *store.Store, in ListInput) (ListOutput, error) {
+// listPreviews lists live previews; stats (may be nil) supplies view counts.
+func listPreviews(s *store.Store, in ListInput, stats map[string]auth.ViewStat) (ListOutput, error) {
 	manifests, err := s.List()
 	if err != nil {
 		return ListOutput{}, err
@@ -57,13 +61,18 @@ func listPreviews(s *store.Store, in ListInput) (ListOutput, error) {
 		if in.Project != "" && m.Project != in.Project {
 			continue
 		}
-		out.Previews = append(out.Previews, PreviewInfo{
+		info := PreviewInfo{
 			Name:    m.Name,
 			URL:     s.URL(m.Name),
 			Title:   m.Title,
 			Project: m.Project,
 			Expires: m.Expires.Format(time.RFC3339),
-		})
+		}
+		if v := stats[m.Name]; v.Count > 0 {
+			info.Views = v.Count
+			info.LastSeen = v.LastSeen.Format(time.RFC3339)
+		}
+		out.Previews = append(out.Previews, info)
 	}
 	return out, nil
 }
@@ -137,7 +146,9 @@ func extendPreview(s *store.Store, in ExtendInput) (ExtendOutput, error) {
 // `omitempty`, so a false value for those is dropped from the wire regardless.
 func boolPtr(b bool) *bool { return &b }
 
-func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string) error {
+// Run serves the MCP tools over stdio. views (may be nil) returns the current
+// per-preview view stats for the list tool.
+func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string, views func() map[string]auth.ViewStat) error {
 	server := mcp.NewServer(&mcp.Implementation{Name: "glim", Version: version}, nil)
 
 	present := func(_ context.Context, _ *mcp.CallToolRequest, in PresentInput) (*mcp.CallToolResult, PresentOutput, error) {
@@ -166,13 +177,22 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	}, present)
 
 	list := func(_ context.Context, _ *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, ListOutput, error) {
-		out, err := listPreviews(s, in)
+		var stats map[string]auth.ViewStat
+		if views != nil {
+			stats = views()
+		}
+		out, err := listPreviews(s, in, stats)
 		if err != nil {
 			return nil, ListOutput{}, err
 		}
 		text := fmt.Sprintf("%d live preview(s).", len(out.Previews))
 		for _, p := range out.Previews {
 			text += "\n" + p.Name + " — " + p.URL
+			if p.Views > 0 {
+				text += fmt.Sprintf(" (opened %d×, last %s)", p.Views, p.LastSeen)
+			} else {
+				text += " (not opened yet)"
+			}
 		}
 		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
 		return result, out, nil
@@ -180,7 +200,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list",
-		Description: "List the currently live previews this glim instance is serving (name, link, expiry), optionally filtered by project.",
+		Description: "List the currently live previews this glim instance is serving (name, link, expiry, view count and last-opened time), optionally filtered by project.",
 		// Pure read: no mutation, idempotent, closed domain.
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,

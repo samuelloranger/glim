@@ -1,7 +1,7 @@
 import { createMemo, onSettled, Show, untrack } from "solid-js";
 import type { Override } from "../lib/actions";
 import { displayTitle, thumbnailSrc } from "../lib/preview";
-import { EMBER_MS, formatLeft, lifeFraction } from "../lib/time";
+import { EMBER_MS, formatLeft, formatSeen, lifeFraction } from "../lib/time";
 import type { Preview } from "../lib/types";
 import { ExtendMenu } from "./ExtendMenu";
 import { Lifeline } from "./Lifeline";
@@ -76,6 +76,9 @@ export function PreviewCard(props: {
         <Show when={props.preview.project}>
           <span class="chip">{props.preview.project}</span>
         </Show>
+        <span class={["seen", { never: props.preview.views <= 0 }]}>
+          {formatSeen(props.preview.views, props.preview.lastSeen, props.now)}
+        </span>
       </div>
       <div class="actions">
         <a class="btn quiet" href={href()} target="_blank" rel="noopener">

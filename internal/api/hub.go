@@ -77,7 +77,7 @@ func (h *Hub) Rescan(force bool) {
 	if !stale {
 		return
 	}
-	snap, err := BuildSnapshot(h.st)
+	snap, err := BuildSnapshot(h.st, h.auth)
 	if err != nil {
 		h.logf("hub: %v", err)
 		return
@@ -114,7 +114,7 @@ func (h *Hub) Subscribe() (<-chan Snapshot, Snapshot, func()) {
 	cur, built := h.current, h.built
 	h.mu.Unlock()
 	if !built {
-		if snap, err := BuildSnapshot(h.st); err == nil {
+		if snap, err := BuildSnapshot(h.st, h.auth); err == nil {
 			cur = snap
 		}
 	}

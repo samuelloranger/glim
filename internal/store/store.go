@@ -39,6 +39,9 @@ type Store struct {
 	Root    string
 	BaseURL string
 	Now     func() time.Time
+	// OnRemove, if set, is called with the name of every preview Remove or GC
+	// deletes (not for republishes, which keep the name).
+	OnRemove func(name string)
 }
 
 func New(root, baseURL string) *Store {
@@ -275,7 +278,17 @@ func (s *Store) Remove(name string) error {
 	if _, err := readManifest(dir); err != nil {
 		return fmt.Errorf("no such preview: %s", name)
 	}
-	return os.RemoveAll(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	s.removed(name)
+	return nil
+}
+
+func (s *Store) removed(name string) {
+	if s.OnRemove != nil {
+		s.OnRemove(name)
+	}
 }
 
 func (s *Store) Get(name string) (Manifest, error) {
@@ -378,6 +391,7 @@ func (s *Store) GC() (int, error) {
 		if m.Expired(now) {
 			if os.RemoveAll(dir) == nil {
 				removed++
+				s.removed(e.Name())
 			}
 		}
 	}

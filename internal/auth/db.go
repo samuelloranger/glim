@@ -25,6 +25,7 @@ type DB struct {
 	sql        *sql.DB
 	Now        func() time.Time
 	BcryptCost int
+	owner      ownerKeyCache
 }
 
 // Open creates (0600, in a 0700 directory) or opens the database at path and

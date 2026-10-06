@@ -6,6 +6,32 @@ pin or remove a preview, and copy its link. Changes made elsewhere, such as a
 new publish from the CLI or an agent, or a preview expiring, show up within
 about two seconds without a reload.
 
+## Seen indicator
+
+Each card shows whether the link has been opened: `seen 3× · 5m ago`, or `not
+opened yet`. The same numbers appear as the VIEWS and LAST SEEN columns of
+`glim ls` and in the MCP `list` tool's output (`views`, `lastSeen`).
+
+Only real page opens count. glim counts a request when it is a top-level
+browser navigation (`Sec-Fetch-Dest: document`) to a preview's HTML page. If a
+client sends no `Sec-Fetch-Dest`, a `GET` that accepts `text/html` counts. These
+do not count:
+
+- the dashboard's own thumbnails (iframes) and a page's sub-resources;
+- bots, link unfurlers and scripted clients, recognised by `User-Agent`
+  (bot, crawler, spider, slurp, facebookexternalhit, embedly, preview,
+  whatsapp, telegram, discord, slack, curl, wget, python-requests,
+  go-http-client);
+- you: signing in also sets a `glim_owner` cookie for the whole site (`HttpOnly`,
+  `SameSite=Lax`, `Secure` on `https`) so your own opens of your previews are
+  skipped. It holds an HMAC of your user id under a random server secret and
+  grants nothing else. Signing out clears it. Browsers that never signed in
+  here, or other people, are counted.
+
+Counts are kept in `~/.glim/glim.db`. Republishing under the same name keeps
+the count, since the link is the same. Removing a preview (dashboard, `glim rm`,
+`revoke`) or letting it expire deletes its count.
+
 ## First sign-in
 
 While no account exists, the dashboard shows a "Create your account" form.
@@ -43,5 +69,8 @@ Removing the last account brings back the "Create your account" form.
 - Repeated failed sign-ins are slowed down per account and per client address.
   Behind a reverse proxy, the client address comes from `X-Forwarded-For`, but
   only when the proxy connects from a loopback or private address.
+- The `glim_owner` cookie is scoped to `/` so it reaches previews. It is a
+  signed marker used only to skip counting your own opens; it is not a session
+  and cannot be used to sign in.
 - Previews run as an isolated origin (see [Serving](./serving.md)), so a
   preview's scripts can't act as you on the dashboard.

@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"time"
 
+	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/store"
 )
 
@@ -14,6 +16,9 @@ type Preview struct {
 	Expires time.Time `json:"expires"`
 	Pinned  bool      `json:"pinned"`
 	URL     string    `json:"url"`
+	// Views counts real page opens; LastSeen is the latest one, null if never.
+	Views    int64      `json:"views"`
+	LastSeen *time.Time `json:"lastSeen"`
 }
 
 type Status struct {
@@ -29,9 +34,27 @@ type Snapshot struct {
 	Status   Status    `json:"status"`
 }
 
-func toPreview(st *store.Store, m store.Manifest) Preview {
-	return Preview{Name: m.Name, Title: m.Title, Project: m.Project, Created: m.Created,
-		Expires: m.Expires, Pinned: m.Pinned, URL: st.URL(m.Name)}
+func toPreview(st *store.Store, m store.Manifest, v auth.ViewStat) Preview {
+	p := Preview{Name: m.Name, Title: m.Title, Project: m.Project, Created: m.Created,
+		Expires: m.Expires, Pinned: m.Pinned, URL: st.URL(m.Name), Views: v.Count}
+	if v.Count > 0 {
+		t := v.LastSeen
+		p.LastSeen = &t
+	}
+	return p
+}
+
+// viewStats loads every preview's stats; a nil db or a read error yields none,
+// since the counter is decoration and must not break the dashboard.
+func viewStats(a *auth.DB) map[string]auth.ViewStat {
+	if a == nil {
+		return nil
+	}
+	stats, err := a.ViewStats(context.Background())
+	if err != nil {
+		return nil
+	}
+	return stats
 }
 
 func storeNow(st *store.Store) time.Time {
@@ -41,7 +64,7 @@ func storeNow(st *store.Store) time.Time {
 	return time.Now()
 }
 
-func BuildSnapshot(st *store.Store) (Snapshot, error) {
+func BuildSnapshot(st *store.Store, a *auth.DB) (Snapshot, error) {
 	list, err := st.List()
 	if err != nil {
 		return Snapshot{}, err
@@ -53,8 +76,9 @@ func BuildSnapshot(st *store.Store) (Snapshot, error) {
 	snap := Snapshot{Now: storeNow(st).UTC(), Previews: make([]Preview, 0, len(list))}
 	snap.Status.Live = len(list)
 	snap.Status.DiskBytes = disk
+	stats := viewStats(a)
 	for _, m := range list {
-		snap.Previews = append(snap.Previews, toPreview(st, m))
+		snap.Previews = append(snap.Previews, toPreview(st, m, stats[m.Name]))
 		if m.Pinned {
 			snap.Status.Pinned++
 			continue

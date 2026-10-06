@@ -97,6 +97,7 @@ func cmdPublish(args []string) error {
 		base = b
 	}
 	s := store.New(cfg.Root, base)
+	s.OnRemove = forgetViews
 	res, err := s.Publish(entry, *title, *project, os.Getenv("GLIM_SESSION_ID"), *ttl, *name)
 	if err != nil {
 		return err
@@ -186,16 +187,21 @@ func cmdList() error {
 		return nil
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tTITLE\tAGE\tEXPIRES IN")
+	fmt.Fprintln(w, "NAME\tTITLE\tAGE\tEXPIRES IN\tVIEWS\tLAST SEEN")
 	now := time.Now()
+	stats := viewStatsNow()
 	for _, m := range list {
 		expires := short(m.Expires.Sub(now))
 		if m.Pinned {
 			expires = "pinned"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+		views, seen := 0, "-"
+		if v := stats[m.Name]; v.Count > 0 {
+			views, seen = int(v.Count), agoShort(now.Sub(v.LastSeen))
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n",
 			m.Name, truncate(m.Title, 30),
-			short(now.Sub(m.Created)), expires)
+			short(now.Sub(m.Created)), expires, views, seen)
 	}
 	return w.Flush()
 }
@@ -206,6 +212,7 @@ func cmdRemove(args []string) error {
 	}
 	cfg := config.Load()
 	s := store.New(cfg.Root, cfg.BaseURL())
+	s.OnRemove = forgetViews
 	for _, name := range args {
 		if err := s.Remove(name); err != nil {
 			return err
@@ -218,6 +225,7 @@ func cmdRemove(args []string) error {
 func cmdGC() error {
 	cfg := config.Load()
 	s := store.New(cfg.Root, cfg.BaseURL())
+	s.OnRemove = forgetViews
 	n, err := s.GC()
 	if err != nil {
 		return err
@@ -328,7 +336,8 @@ func humanBytes(n int64) string {
 func cmdMCP() error {
 	cfg := config.Load()
 	s := store.New(cfg.Root, cfg.BaseURL())
-	return mcpserver.Run(context.Background(), s, cfg.TTLDuration(), version)
+	s.OnRemove = forgetViews
+	return mcpserver.Run(context.Background(), s, cfg.TTLDuration(), version, viewStatsNow)
 }
 
 func cmdServe(args []string) error {
@@ -364,15 +373,23 @@ func cmdServe(args []string) error {
 		log.Printf("no account yet — open %s/ to create the first one", shownBase)
 	}
 
+	st.OnRemove = func(name string) {
+		if err := db.DeleteViews(ctx, name); err != nil {
+			log.Printf("views: forget %s: %v", name, err)
+		}
+	}
 	hub := api.NewHub(st, db, 2*time.Second, log.Printf)
 	go hub.Run(ctx)
+	recorder := db.NewViewRecorder(hub.Poke)
+	defer recorder.Close()
 	apiSrv := api.New(api.Deps{
 		Store: st, Auth: db, Limiter: auth.NewLimiter(nil), Hub: hub,
 		SecureCookies: strings.HasPrefix(base, "https://"),
 		PublicHost:    publicHost(base),
 		Logf:          log.Printf,
 	})
-	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler()})
+	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler(),
+		Views: &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken}})
 }
 
 func cmdCaddy() error {
@@ -616,6 +633,46 @@ func hostFromBase(base string) string {
 		h = strings.TrimPrefix(h, p)
 	}
 	return h
+}
+
+// openExistingDB opens the dashboard database only if it already exists, so
+// CLI commands never create it as a side effect. It returns nil otherwise.
+func openExistingDB() *auth.DB {
+	if _, err := os.Stat(config.DBPath()); err != nil {
+		return nil
+	}
+	db, err := auth.Open(config.DBPath())
+	if err != nil {
+		return nil
+	}
+	return db
+}
+
+// viewStatsNow reads per-preview view stats (nil without a dashboard DB).
+func viewStatsNow() map[string]auth.ViewStat {
+	db := openExistingDB()
+	if db == nil {
+		return nil
+	}
+	defer db.Close()
+	stats, _ := db.ViewStats(context.Background())
+	return stats
+}
+
+// forgetViews drops a removed or expired preview's view stats, if a DB exists.
+func forgetViews(name string) {
+	if db := openExistingDB(); db != nil {
+		defer db.Close()
+		_ = db.DeleteViews(context.Background(), name)
+	}
+}
+
+// agoShort renders how long ago something happened, e.g. "just now" or "5m ago".
+func agoShort(d time.Duration) string {
+	if d < time.Minute {
+		return "just now"
+	}
+	return short(d) + " ago"
 }
 
 func truncate(s string, n int) string {
