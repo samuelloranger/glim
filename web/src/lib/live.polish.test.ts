@@ -34,7 +34,10 @@ const preview = (name: string): Preview => ({
   created: "2026-01-01T00:00:00Z",
   expires: "2026-01-01T06:00:00Z",
   pinned: false,
+  locked: false,
   url: `https://glim.example.com/${name}/`,
+  views: 0,
+  lastSeen: null,
 });
 
 const snap = (previews: Preview[]): Snapshot => ({
