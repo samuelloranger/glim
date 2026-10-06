@@ -13,7 +13,7 @@
   <a href="https://buymeacoffee.com/samlo122"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy me a coffee" /></a>
 </p>
 
-Publish a self-contained HTML file or directory and get a short, readable link to
+Publish a self-contained HTML file or directory (or a Markdown, text, JSON or image file, rendered to a styled page) and get a short, readable link to
 show someone — from the command line or from a coding agent via MCP. glim runs its
 own server; put it behind a reverse proxy for a public URL, or use `--local` for a
 loopback link with no proxy at all.

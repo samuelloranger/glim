@@ -10,7 +10,7 @@ import (
 )
 
 type PresentInput struct {
-	Path    string `json:"path" jsonschema:"path to a self-contained HTML file or directory (with index.html)"`
+	Path    string `json:"path" jsonschema:"path to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
 	Title   string `json:"title,omitempty" jsonschema:"human title; becomes the readable link slug"`
 	Project string `json:"project,omitempty" jsonschema:"project name, stored as metadata"`
 	TTL     string `json:"ttl,omitempty" jsonschema:"how long the link lives, e.g. 6h or 30m; default 6h"`
