@@ -171,6 +171,10 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 		if err := os.Rename(dir, aside); err != nil {
 			return PublishResult{}, err
 		}
+		// Rename keeps the directory's mtime; refresh it so GC's staleness
+		// check cannot reap the aside copy while the swap is in flight.
+		now := s.now()
+		_ = os.Chtimes(aside, now, now)
 	}
 	if err := os.Rename(tmp, dir); err != nil {
 		if aside != "" {
