@@ -149,6 +149,26 @@ func TestPresentRejectsNonPositiveTTL(t *testing.T) {
 	}
 }
 
+func TestPresentRejectsNonPositiveDefaultTTL(t *testing.T) {
+	s := newTestStore(t)
+	p := filepath.Join(t.TempDir(), "page.html")
+	if err := os.WriteFile(p, []byte("<h1>hi</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []time.Duration{0, -time.Hour} {
+		if _, err := publishPreview(s, d, PresentInput{Path: p}); err == nil {
+			t.Errorf("default ttl %v should fail", d)
+		}
+	}
+	if list, _ := s.List(); len(list) != 0 {
+		t.Errorf("rejected default ttl must not create previews, got %d", len(list))
+	}
+	// An explicit valid ttl still works when the default is bad.
+	if _, err := publishPreview(s, 0, PresentInput{Path: p, TTL: "30m"}); err != nil {
+		t.Errorf("explicit ttl should override bad default: %v", err)
+	}
+}
+
 func TestExtendRejectsNonPositiveTTL(t *testing.T) {
 	s := newTestStore(t)
 	name := publish(t, s, "T", "", time.Hour)

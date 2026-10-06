@@ -90,8 +90,8 @@ func pinPreview(s *store.Store, in PinInput) (PinOutput, error) {
 	return PinOutput{Pinned: in.Name}, nil
 }
 
-// publishPreview validates the optional ttl (rejecting zero or negative
-// lifetimes) and publishes the preview.
+// publishPreview validates the ttl, whether explicit or the resolved default
+// (rejecting zero or negative lifetimes), and publishes the preview.
 func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (store.PublishResult, error) {
 	ttl := defaultTTL
 	if in.TTL != "" {
@@ -100,6 +100,8 @@ func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (
 			return store.PublishResult{}, err
 		}
 		ttl = d
+	} else if err := store.ValidateTTL(ttl); err != nil {
+		return store.PublishResult{}, fmt.Errorf("default ttl: %w", err)
 	}
 	return s.Publish(in.Path, in.Title, in.Project, "", ttl, in.Name)
 }
