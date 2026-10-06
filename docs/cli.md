@@ -171,11 +171,20 @@ install` wires it into an agent.
 ## install
 
 ```sh
-glim install <claude|codex|cursor>
+glim install [--skill] <claude|codex|cursor>
 ```
 
 Registers the MCP server with the agent and writes a steering rule so it prefers
-glim for previews. See [Agent integration](/agents).
+glim for previews. With `--skill` it writes a `SKILL.md` instead, with no MCP
+server. See [Agent integration](/agents).
+
+## uninstall
+
+```sh
+glim uninstall <claude|codex|cursor>
+```
+
+Removes everything `install` added, in either mode. Safe to re-run.
 
 ## version
 

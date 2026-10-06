@@ -27,6 +27,34 @@ For each agent it does two things:
 The rule and config blocks are marked as managed, so re-running `install` updates
 them in place instead of duplicating.
 
+## Skill mode
+
+If you would rather not run an MCP server, install a skill instead:
+
+```sh
+glim install --skill claude    # or codex, cursor
+```
+
+This writes a `SKILL.md` that tells the agent to publish with the `glim` CLI and
+hand you the link. It does not register the MCP server or write a steering rule.
+Re-running overwrites the file.
+
+| agent | skill written to |
+| --- | --- |
+| Claude | `~/.claude/skills/glim/SKILL.md` |
+| Codex | `~/.agents/skills/glim/SKILL.md` |
+| Cursor | `~/.cursor/skills/glim/SKILL.md` |
+
+## Uninstall
+
+```sh
+glim uninstall claude    # or codex, cursor
+```
+
+Removes the MCP registration, the managed steering blocks or rule file, and the
+skill directory, whichever of them exist. Content around the managed blocks and
+other MCP servers are left untouched. Re-running prints `nothing to remove`.
+
 ## The present tool
 
 ```
