@@ -40,7 +40,8 @@ gives you the returned `url`. It is the same URL the CLI prints, built from your
 To push an **update** to the same URL instead of minting a new one, the agent
 passes `name` set to the slug a previous `present` returned. The preview is
 replaced in place (stale files removed, expiry reset), so a link already shared
-keeps working with fresh contents. Omitting `name` gives a new random slug, as
+keeps working with fresh contents, and any tab already open on it refreshes
+by itself (see [live reload](/serving); disable with `live_reload: false`). Omitting `name` gives a new random slug, as
 before. `name` accepts lowercase letters, digits and single hyphens only.
 
 To protect a preview, the agent passes `password` (8 to 72 bytes). Visitors then
