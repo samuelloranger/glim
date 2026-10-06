@@ -10,8 +10,8 @@ import (
 )
 
 const SteeringRule = "To show the user any HTML, Markdown or other visual preview, call the glim `present` MCP tool " +
-	"and give the user the returned link. To update a preview, call `present` again with the same `name`; " +
-	"the user's open tab refreshes by itself, so there is no need to send the link again. " +
+	"and give the user the returned link. To update a preview, call `present` again with the same `name`: " +
+	"the link stays the same, and open tabs usually refresh by themselves (live reload, on by default). " +
 	"Do not use Claude artifacts or other built-in preview mechanisms."
 
 const (

@@ -21,11 +21,12 @@ Use glim to show the user a preview of something you built.
 2. Publish it: ` + "`glim <entry> --title <title>`" + `. ` + "`<entry>`" + ` is the file or directory.
 3. Give the user the link glim prints.
 
-To update a preview, republish to the same link with ` + "`--name <slug>`" + `. A tab that already has
-it open refreshes by itself, so there is no need to send the link again.
+To update a preview, republish to the same link with ` + "`--name <slug>`" + `. The link stays the
+same, and open tabs usually refresh by themselves (live reload, on by default).
 
-To keep a preview private, add ` + "`--password`" + ` and pipe the password on stdin
-(` + "`printf '%s\\n' \"$PW\" | glim <entry> --password`" + `); visitors must enter it first.
+To keep a preview private, add ` + "`--password`" + ` and pipe the password (8 to 72 bytes) on stdin:
+` + "`printf '%s\\n' \"$PW\" | glim <entry> --password`" + `. Visitors must enter it first.
+Republishing with ` + "`--name`" + ` and no ` + "`--password`" + ` keeps the existing password.
 
 Previews expire automatically. Remove one early with ` + "`glim rm <name>`" + `.
 `
