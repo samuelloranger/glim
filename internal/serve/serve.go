@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,18 +23,39 @@ const PreviewCSP = "sandbox allow-scripts allow-forms allow-popups allow-modals 
 // PreviewHandler serves live previews from st.Root. Unknown, invalid or
 // expired slugs, directory listings and any dot-prefixed path segment 404.
 func PreviewHandler(st *store.Store) http.Handler {
-	files := http.FileServer(noListFS{http.Dir(st.Root)})
+	fsys := noListFS{http.Dir(st.Root)}
+	files := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		if hasDotSegment(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
 		slug, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
-		if _, ok := st.Live(slug); !ok {
+		m, ok := st.Live(slug)
+		if !ok {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Security-Policy", PreviewCSP)
+		if serveHTMLInjected(w, r, fsys, func(doc []byte) (string, string) {
+			now := time.Now()
+			if st.Now != nil {
+				now = st.Now()
+			}
+			base := st.BaseURL
+			if base == "" {
+				scheme := "http"
+				if r.TLS != nil {
+					scheme = "https"
+				}
+				base = scheme + "://" + r.Host
+			}
+			base = strings.TrimRight(base, "/")
+			return cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, declaredMeta(doc)), ""
+		}) {
+			return
+		}
 		files.ServeHTTP(w, r)
 	})
 }
@@ -87,6 +109,13 @@ func NewRouter(o Options) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
 		switch {
+		case p == "/robots.txt":
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte("User-agent: *\nDisallow: /\n"))
+		case p == ogImagePath:
+			w.Header().Set("Content-Type", "image/png")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			http.ServeContent(w, r, "og.png", time.Time{}, bytes.NewReader(ogImage()))
 		case strings.HasPrefix(p, "/_glim/api/"):
 			zone(o.API, w, r)
 		case p == "/" || strings.HasPrefix(p, "/_glim/"):
