@@ -77,14 +77,12 @@ func main() {
 func cmdPublish(args []string) error {
 	entry, flagArgs := splitEntry(args)
 	cfg := config.Load()
-	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
-	title := fs.String("title", "", "human title (becomes the readable slug)")
-	project := fs.String("project", "", "project name")
-	ttl := fs.Duration("ttl", cfg.TTLDuration(), "time to live, e.g. 6h, 30m")
-	local := fs.Bool("local", false, "auto-start the built-in server and use a localhost link")
-	qr := fs.Bool("qr", false, "also print a scannable QR code of the URL")
-	name := fs.String("name", "", "reuse this exact slug to update in place at the same URL (created if absent); omit for a fresh random link")
+	fs, o := newPublishFlags(cfg.TTLDuration())
+	title, project, ttl, local, qr, name := o.title, o.project, o.ttl, o.local, o.qr, o.name
 	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	if err := store.ValidateTTL(*ttl); err != nil {
 		return err
 	}
 	if entry == "" || fs.NArg() != 0 {
@@ -115,11 +113,47 @@ func writeQR(w io.Writer, url string) {
 	qrterminal.GenerateHalfBlock(url, qrterminal.L, w)
 }
 
+type publishFlags struct {
+	title, project, name *string
+	ttl                  *time.Duration
+	local, qr            *bool
+}
+
+// newPublishFlags defines every flag of the publish command. It is the single
+// source of truth: splitEntry derives which flags take a value from it.
+func newPublishFlags(defaultTTL time.Duration) (*flag.FlagSet, publishFlags) {
+	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
+	var o publishFlags
+	o.title = fs.String("title", "", "human title (becomes the readable slug)")
+	o.project = fs.String("project", "", "project name")
+	o.ttl = fs.Duration("ttl", defaultTTL, "time to live, e.g. 6h, 30m")
+	o.local = fs.Bool("local", false, "auto-start the built-in server and use a localhost link")
+	o.qr = fs.Bool("qr", false, "also print a scannable QR code of the URL")
+	o.name = fs.String("name", "", "reuse this exact slug to update in place at the same URL (created if absent); omit for a fresh random link")
+	return fs, o
+}
+
+// valueFlagNames returns the flags of fs that consume a following argument,
+// i.e. every flag whose Value is not a bool flag.
+func valueFlagNames(fs *flag.FlagSet) map[string]bool {
+	m := map[string]bool{}
+	fs.VisitAll(func(f *flag.Flag) {
+		if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && bf.IsBoolFlag() {
+			return
+		}
+		m[f.Name] = true
+	})
+	return m
+}
+
+// splitEntry separates the entry path from the publish flags so flags may come
+// before or after it, as `--flag value` or `--flag=value`.
 func splitEntry(args []string) (entry string, flagArgs []string) {
-	valueFlags := map[string]bool{"title": true, "project": true, "ttl": true}
+	fs, _ := newPublishFlags(0)
+	valueFlags := valueFlagNames(fs)
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if strings.HasPrefix(a, "-") {
+		if strings.HasPrefix(a, "-") && a != "-" {
 			flagArgs = append(flagArgs, a)
 			name := strings.TrimLeft(a, "-")
 			if strings.Contains(name, "=") {
@@ -196,9 +230,9 @@ func cmdExtend(args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("usage: glim extend <name> <ttl>")
 	}
-	ttl, err := time.ParseDuration(args[1])
+	ttl, err := store.ParseTTL(args[1])
 	if err != nil {
-		return fmt.Errorf("bad ttl %q: %w", args[1], err)
+		return err
 	}
 	cfg := config.Load()
 	s := store.New(cfg.Root, cfg.BaseURL())

@@ -48,3 +48,6 @@ before. `name` accepts lowercase letters, digits and single hyphens only.
 Registering the tool makes it available, but some agents have a built-in preview
 mechanism they would otherwise reach for. The steering rule tells the agent to use
 glim's `present` tool for previews. Both together make it reliable.
+
+A `ttl` (on `present` and `extend`) must be greater than zero; zero or negative
+values are rejected with an error instead of creating an already-expired preview.

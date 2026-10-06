@@ -8,12 +8,12 @@ import (
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
 		"Rawkoon audiobooks new feature": "rawkoon-audiobooks-new-feature",
-		"  Hello, World!  ":               "hello-world",
-		"multi   spaces\tand\nnewlines":   "multi-spaces-and-newlines",
-		"Accents-and__underscores":        "accents-and-underscores",
-		"!!!":                             "",
-		"":                                "",
-		"UPPER":                           "upper",
+		"  Hello, World!  ":              "hello-world",
+		"multi   spaces\tand\nnewlines":  "multi-spaces-and-newlines",
+		"Accents-and__underscores":       "accents-and-underscores",
+		"!!!":                            "",
+		"":                               "",
+		"UPPER":                          "upper",
 	}
 	for in, want := range cases {
 		if got := Slugify(in); got != want {

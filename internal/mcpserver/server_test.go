@@ -129,3 +129,55 @@ func TestExtendPreview(t *testing.T) {
 		t.Fatal("want error extending missing preview")
 	}
 }
+
+func TestPresentRejectsNonPositiveTTL(t *testing.T) {
+	s := newTestStore(t)
+	p := filepath.Join(t.TempDir(), "page.html")
+	if err := os.WriteFile(p, []byte("<h1>hi</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, ttl := range []string{"0s", "-1h", "bogus"} {
+		if _, err := publishPreview(s, time.Hour, PresentInput{Path: p, TTL: ttl}); err == nil {
+			t.Errorf("present ttl %q should fail", ttl)
+		}
+	}
+	if list, _ := s.List(); len(list) != 0 {
+		t.Errorf("rejected ttl must not create previews, got %d", len(list))
+	}
+	if _, err := publishPreview(s, time.Hour, PresentInput{Path: p, TTL: "30m"}); err != nil {
+		t.Errorf("valid ttl failed: %v", err)
+	}
+}
+
+func TestPresentRejectsNonPositiveDefaultTTL(t *testing.T) {
+	s := newTestStore(t)
+	p := filepath.Join(t.TempDir(), "page.html")
+	if err := os.WriteFile(p, []byte("<h1>hi</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []time.Duration{0, -time.Hour} {
+		if _, err := publishPreview(s, d, PresentInput{Path: p}); err == nil {
+			t.Errorf("default ttl %v should fail", d)
+		}
+	}
+	if list, _ := s.List(); len(list) != 0 {
+		t.Errorf("rejected default ttl must not create previews, got %d", len(list))
+	}
+	// An explicit valid ttl still works when the default is bad.
+	if _, err := publishPreview(s, 0, PresentInput{Path: p, TTL: "30m"}); err != nil {
+		t.Errorf("explicit ttl should override bad default: %v", err)
+	}
+}
+
+func TestExtendRejectsNonPositiveTTL(t *testing.T) {
+	s := newTestStore(t)
+	name := publish(t, s, "T", "", time.Hour)
+	for _, ttl := range []string{"0s", "-1h"} {
+		if _, err := extendPreview(s, ExtendInput{Name: name, TTL: ttl}); err == nil {
+			t.Errorf("extend ttl %q should fail", ttl)
+		}
+	}
+	if _, err := extendPreview(s, ExtendInput{Name: name, TTL: "2h"}); err != nil {
+		t.Errorf("valid extend failed: %v", err)
+	}
+}
