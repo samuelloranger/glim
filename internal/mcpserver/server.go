@@ -187,7 +187,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "present",
-		Description: "Publish a self-contained HTML file or directory and return a short-lived link to show the user, optionally behind a password. Use this to show any visual/HTML preview instead of other preview mechanisms.",
+		Description: "Publish a self-contained HTML file or directory, or a Markdown, text, JSON or image file (converted to a styled page), and return a short-lived link to show the user, optionally behind a password. Pass `name` to update an existing preview in place (omit `password` to keep its current one); open tabs usually refresh by themselves. Use this to show any visual/HTML preview instead of other preview mechanisms.",
 		// Creates a new preview each call: writes state, additive (not
 		// destructive), non-idempotent, closed domain (own local store/server).
 		Annotations: &mcp.ToolAnnotations{

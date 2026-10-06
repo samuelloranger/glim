@@ -9,8 +9,10 @@ import (
 	"strings"
 )
 
-const SteeringRule = "To show the user any HTML or visual preview, call the glim `present` MCP tool " +
-	"and give the user the returned link. Do not use Claude artifacts or other built-in preview mechanisms."
+const SteeringRule = "To show the user any HTML, Markdown or other visual preview, call the glim `present` MCP tool " +
+	"and give the user the returned link. To update a preview, call `present` again with the same `name`: " +
+	"the link stays the same, and open tabs usually refresh by themselves (live reload, on by default). " +
+	"Do not use Claude artifacts or other built-in preview mechanisms."
 
 const (
 	blockBeginMD   = "<!-- glim:managed -->"
@@ -89,7 +91,7 @@ func installCursor(d Deps) ([]string, error) {
 	steps = append(steps, "registered glim MCP server in "+mcpPath)
 
 	rule := filepath.Join(d.Home, ".cursor", "rules", "glim.mdc")
-	body := "---\ndescription: Prefer glim for HTML previews\nalwaysApply: true\n---\n\n" + SteeringRule + "\n"
+	body := "---\ndescription: Prefer glim for HTML and other visual previews\nalwaysApply: true\n---\n\n" + SteeringRule + "\n"
 	if err := os.MkdirAll(filepath.Dir(rule), 0o755); err != nil {
 		return steps, err
 	}
