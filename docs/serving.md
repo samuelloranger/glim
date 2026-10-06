@@ -53,7 +53,12 @@ the server's secret, so changing or removing the password invalidates every
 earlier unlock. Attempts are rate-limited per client address and preview
 (repeated failures are answered with `429` and `Retry-After`). Unlock attempts
 never count as [views](./dashboard.md#seen-indicator), and a signed-in dashboard
-owner (the `glim_owner` cookie) bypasses the lock.
+owner (the `glim_owner` cookie, valid only while their session is live)
+bypasses the lock. When the owner opens a locked page this way, glim also sets
+that preview's unlock cookie so its scripts, styles and images load too.
+Publishing, locking, unlocking, pinning and extending a preview are serialized,
+and republishing a locked preview whose manifest cannot be read fails rather
+than silently dropping the lock.
 
 Previews run in a sandbox with an opaque origin, which browsers treat as
 cross-site for their sub-resource requests. They only send the unlock cookie

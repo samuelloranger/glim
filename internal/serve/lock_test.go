@@ -146,10 +146,7 @@ func TestLockedPreviewServingMatrix(t *testing.T) {
 
 func TestLockedPreviewOwnerBypass(t *testing.T) {
 	e := newLockEnv(t, true)
-	tok, err := e.db.OwnerToken(1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	tok, _ := ownerSession(t, e.db)
 	rec := e.do("GET", "/"+e.slug+"/app.js", nil, &http.Cookie{Name: auth.OwnerCookie, Value: tok})
 	if rec.Code != 200 {
 		t.Fatalf("owner = %d, want 200", rec.Code)

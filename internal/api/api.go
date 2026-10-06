@@ -134,7 +134,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, sess auth.Session) {
 // unlike the session cookie it reaches them) so the owner's own opens are not
 // counted as views. It carries an HMAC of the user id and grants nothing else.
 func (s *Server) setOwnerCookie(w http.ResponseWriter, sess auth.Session) {
-	tok, err := s.d.Auth.OwnerToken(sess.User.ID)
+	tok, err := s.d.Auth.OwnerToken(sess.User.ID, sess.Token)
 	if err != nil {
 		s.d.Logf("api: owner cookie: %v", err)
 		return

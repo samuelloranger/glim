@@ -27,8 +27,9 @@ do not count:
   go-http-client);
 - you: signing in also sets a `glim_owner` cookie for the whole site (`HttpOnly`,
   `SameSite=Lax`, `Secure` on `https`) so your own opens of your previews are
-  skipped. It holds an HMAC of your user id under a random server secret and
-  grants nothing else. Signing out clears it. Browsers that never signed in
+  skipped. It holds an HMAC of your user id and session under a random server secret,
+  and only works while that session is alive: signing out, expiry, a password
+  reset or removing the user all invalidate it. Signing out clears it. Browsers that never signed in
   here, or other people, are counted.
 
 Counts are kept in `~/.glim/glim.db`. Republishing under the same name keeps
@@ -73,7 +74,8 @@ Removing the last account brings back the "Create your account" form.
   Behind a reverse proxy, the client address comes from `X-Forwarded-For`, but
   only when the proxy connects from a loopback or private address.
 - The `glim_owner` cookie is scoped to `/` so it reaches previews. It is a
-  signed marker used only to skip counting your own opens; it is not a session
-  and cannot be used to sign in.
+  signed marker tied to your session. It skips counting your own opens and
+  bypasses [locked previews](./serving.md); it dies with the session and
+  cannot be used to sign in.
 - Previews run as an isolated origin (see [Serving](./serving.md)), so a
   preview's scripts can't act as you on the dashboard.

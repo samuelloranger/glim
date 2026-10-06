@@ -182,16 +182,34 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		Expires: created.Add(ttl),
 	}
 	m.PasswordHash = passwordHash
+
+	// Serialize with every other publish, lock, unlock, pin and extend of this
+	// slug from here through the swap, so the manifest read below cannot be
+	// stale and a concurrent change is never lost to the directory swap.
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return PublishResult{}, err
+	}
+	defer unlock()
+
+	dir := filepath.Join(s.Root, name)
 	if passwordHash == "" {
-		if old, err := readManifest(filepath.Join(s.Root, name)); err == nil {
+		// Keep an existing lock. Fail closed: a live directory whose manifest
+		// cannot be read must not be republished unlocked.
+		if _, err := os.Lstat(dir); err == nil {
+			old, err := readManifest(dir)
+			if err != nil {
+				return PublishResult{}, fmt.Errorf("cannot read the existing manifest of %s, refusing to republish it: %w", name, err)
+			}
 			m.PasswordHash = old.PasswordHash
+		} else if !os.IsNotExist(err) {
+			return PublishResult{}, err
 		}
 	}
 	if err := writeManifest(tmp, m); err != nil {
 		return PublishResult{}, err
 	}
 
-	dir := filepath.Join(s.Root, name)
 	var aside string
 	if _, err := os.Lstat(dir); err == nil {
 		aside = filepath.Join(s.Root, oldPrefix+name+"-"+filepath.Base(tmp)[len(tmpPrefix):])
@@ -287,6 +305,14 @@ func (s *Store) List() ([]Manifest, error) {
 }
 
 func (s *Store) Remove(name string) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	if _, err := readManifest(dir); err != nil {
 		return fmt.Errorf("no such preview: %s", name)
@@ -326,6 +352,14 @@ func (s *Store) Live(name string) (Manifest, bool) {
 }
 
 func (s *Store) Pin(name string) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
 	if err != nil {
@@ -341,6 +375,11 @@ func (s *Store) SetPasswordHash(name, hash string) error {
 	if !ValidName(name) {
 		return fmt.Errorf("no such preview: %s", name)
 	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
 	if err != nil {
@@ -351,6 +390,14 @@ func (s *Store) SetPasswordHash(name, hash string) error {
 }
 
 func (s *Store) Extend(name string, ttl time.Duration) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
 	if err != nil {

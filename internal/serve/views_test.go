@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -117,10 +118,7 @@ func TestPreviewHandlerCountsOnlyRealOpens(t *testing.T) {
 func TestPreviewHandlerSkipsOwner(t *testing.T) {
 	h, c, db := trackedHandler(t)
 	doc := map[string]string{"Sec-Fetch-Dest": "document"}
-	tok, err := db.OwnerToken(1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	tok, _ := ownerSession(t, db)
 	do(h, "/demo-1234/", doc, &http.Cookie{Name: auth.OwnerCookie, Value: tok})
 	if len(c.names) != 0 {
 		t.Fatalf("owner open counted: %v", c.names)
@@ -139,4 +137,23 @@ func TestPreviewHandlerWithoutViewsStillServes(t *testing.T) {
 	if rec := do(PreviewHandlerWith(st, nil), "/demo-1234/", map[string]string{"Sec-Fetch-Dest": "document"}); rec.Code != 200 {
 		t.Fatalf("status %d", rec.Code)
 	}
+}
+
+// ownerSession signs a user in and returns the glim_owner cookie value for
+// that session along with the session token.
+func ownerSession(t *testing.T, db *auth.DB) (string, string) {
+	t.Helper()
+	u, err := db.CreateUser(context.Background(), "owner@example.com", "hunter22!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := db.CreateSession(context.Background(), u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := db.OwnerToken(u.ID, sess.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tok, sess.Token
 }

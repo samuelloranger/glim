@@ -91,34 +91,54 @@ func (db *DB) ownerKey() ([]byte, error) {
 	return key, nil
 }
 
-func ownerMAC(key []byte, uid string) string {
+func ownerMAC(key []byte, payload string) string {
 	m := hmac.New(sha256.New, key)
-	m.Write([]byte(uid))
+	m.Write([]byte(payload))
 	return hex.EncodeToString(m.Sum(nil))
 }
 
-// OwnerToken is the value of the glim_owner cookie for a user: "<id>.<hmac>".
-func (db *DB) OwnerToken(userID int64) (string, error) {
+// OwnerToken is the value of the glim_owner cookie for a signed-in session:
+// "<user id>.<session id>.<hmac>". The session id is the hash of the session
+// token, so the cookie stops working as soon as that session is deleted
+// (logout, expiry, password change, user removal).
+func (db *DB) OwnerToken(userID int64, sessionToken string) (string, error) {
 	key, err := db.ownerKey()
 	if err != nil {
 		return "", err
 	}
 	uid := strconv.FormatInt(userID, 10)
-	return uid + "." + ownerMAC(key, uid), nil
+	sid := hex.EncodeToString(hashToken(sessionToken))
+	return uid + "." + sid + "." + ownerMAC(key, uid+"."+sid), nil
 }
 
 // IsOwnerToken reports whether v was minted by OwnerToken under this
-// server's secret. It does not touch the database after the first call.
+// server's secret and still names a live session of an existing user.
 func (db *DB) IsOwnerToken(v string) bool {
-	uid, mac, ok := strings.Cut(v, ".")
-	if !ok || uid == "" {
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
 		return false
 	}
 	key, err := db.ownerKey()
 	if err != nil || len(key) == 0 {
 		return false
 	}
-	return hmac.Equal([]byte(mac), []byte(ownerMAC(key, uid)))
+	if !hmac.Equal([]byte(parts[2]), []byte(ownerMAC(key, parts[0]+"."+parts[1]))) {
+		return false
+	}
+	uid, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return false
+	}
+	th, err := hex.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+	var one int
+	err = db.sql.QueryRowContext(context.Background(), `
+		SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id
+		WHERE s.token_hash = ? AND s.user_id = ? AND s.expires_at > ?`,
+		th, uid, db.now().Unix()).Scan(&one)
+	return err == nil
 }
 
 // UnlockToken is the value of a preview's unlock cookie: an HMAC under the

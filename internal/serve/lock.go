@@ -63,6 +63,12 @@ func isDocumentPath(p string) bool {
 func guardLocked(w http.ResponseWriter, r *http.Request, slug string, m store.Manifest, views *Views, u *Unlock, base string) bool {
 	if views != nil && views.IsOwner != nil {
 		if c, err := r.Cookie(auth.OwnerCookie); err == nil && views.IsOwner(c.Value) {
+			// The owner cookie is SameSite=Lax, which a sandboxed preview's
+			// sub-resource requests do not carry, so hand the owner the
+			// slug's unlock cookie too on the document they open.
+			if r.Method == http.MethodGet && isDocumentPath(r.URL.Path) {
+				setUnlockCookie(w, slug, m, u)
+			}
 			return true
 		}
 	}
@@ -102,19 +108,7 @@ func attemptUnlock(w http.ResponseWriter, r *http.Request, slug string, m store.
 		return
 	}
 	u.Limiter.Succeed(key)
-	c := &http.Cookie{
-		Name: UnlockCookiePrefix + slug, Value: u.token(slug, m.PasswordHash),
-		Path: "/" + slug + "/", HttpOnly: true,
-	}
-	if !m.Pinned {
-		c.Expires = m.Expires
-	}
-	if u.Secure {
-		c.Secure, c.SameSite = true, http.SameSiteNoneMode
-	} else {
-		c.SameSite = http.SameSiteLaxMode
-	}
-	http.SetCookie(w, c)
+	setUnlockCookie(w, slug, m, u)
 	http.Redirect(w, r, r.URL.RequestURI(), http.StatusSeeOther)
 }
 
@@ -179,4 +173,25 @@ func writeLockPage(w http.ResponseWriter, r *http.Request, base string, status i
 	if r.Method != http.MethodHead {
 		_, _ = w.Write(doc)
 	}
+}
+
+// setUnlockCookie grants the visitor access to a locked preview's files.
+func setUnlockCookie(w http.ResponseWriter, slug string, m store.Manifest, u *Unlock) {
+	v := u.token(slug, m.PasswordHash)
+	if v == "" {
+		return
+	}
+	c := &http.Cookie{
+		Name: UnlockCookiePrefix + slug, Value: v,
+		Path: "/" + slug + "/", HttpOnly: true,
+	}
+	if !m.Pinned {
+		c.Expires = m.Expires
+	}
+	if u.Secure {
+		c.Secure, c.SameSite = true, http.SameSiteNoneMode
+	} else {
+		c.SameSite = http.SameSiteLaxMode
+	}
+	http.SetCookie(w, c)
 }
