@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/samuelloranger/glim/internal/render"
 )
 
 // Fingerprint is a cheap digest of which previews exist and when their
@@ -58,7 +60,12 @@ type PublishResult struct {
 
 // AllowedFileExts is the single place that decides which single-file entries
 // may be published. Extend it here to allow more types.
-var AllowedFileExts = []string{".html", ".htm"}
+// Non-HTML types are converted to index.html at publish time (see
+// internal/render).
+var AllowedFileExts = append([]string{".html", ".htm"}, render.Exts...)
+
+// maxConvertBytes caps files read into memory for conversion to HTML.
+const maxConvertBytes int64 = 20 << 20
 
 // Directory publish limits, so pointing glim at a huge tree fails fast.
 const (
@@ -147,6 +154,10 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 		if err := copyTree(abs, tmp); err != nil {
 			return PublishResult{}, err
 		}
+	} else if render.Supported(abs) {
+		if err := publishConverted(abs, tmp, title, info.Size()); err != nil {
+			return PublishResult{}, err
+		}
 	} else if err := copyFile(abs, filepath.Join(tmp, "index.html")); err != nil {
 		return PublishResult{}, err
 	}
@@ -190,6 +201,38 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 	_, _ = s.GC()
 
 	return PublishResult{Name: name, URL: s.url(name), Expires: m.Expires}, nil
+}
+
+// publishConverted renders a non-HTML file into tmp/index.html and keeps the
+// original next to it under its base name.
+func publishConverted(abs, tmp, title string, size int64) error {
+	base := filepath.Base(abs)
+	if err := copyFile(abs, filepath.Join(tmp, base)); err != nil {
+		return err
+	}
+	var data []byte
+	if !isImage(base) {
+		if size > maxConvertBytes {
+			return fmt.Errorf("refusing to publish %s: larger than %d MB", base, maxConvertBytes>>20)
+		}
+		var err error
+		if data, err = os.ReadFile(abs); err != nil {
+			return err
+		}
+	}
+	out, err := render.Convert(base, data, title)
+	if err != nil {
+		return fmt.Errorf("cannot publish %s: %w", base, err)
+	}
+	return os.WriteFile(filepath.Join(tmp, "index.html"), out, 0o644)
+}
+
+func isImage(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg":
+		return true
+	}
+	return false
 }
 
 func (s *Store) url(name string) string {

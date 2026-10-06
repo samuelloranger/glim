@@ -9,10 +9,27 @@ glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--loca
 Copies `entry` into a new preview and prints its URL. A single file is served as
 `index.html`; a directory is copied and must contain its own `index.html`.
 
+### Single-file formats
+
+Besides HTML, a single file can be one of these. glim converts it into a styled,
+self-contained `index.html` (inline CSS, light and dark via `prefers-color-scheme`,
+system fonts, no scripts, no external requests). The original file is also kept
+next to `index.html` under its own name, and the page links to it as `raw`.
+
+| Extension | Result |
+|---|---|
+| `.md`, `.markdown` | Rendered with GitHub-flavoured Markdown (tables, task lists, strikethrough, autolinks). Raw HTML in the source is not passed through. Page title is `--title`, else the first H1, else the file name. |
+| `.txt`, `.log` | Escaped, wrapping `<pre>`. |
+| `.json` | Validated and pretty-printed in an escaped `<pre>`. Invalid JSON fails the publish. |
+| `.png` `.jpg` `.jpeg` `.gif` `.webp` `.avif` `.svg` | Centered image viewer page. |
+
+Converted text formats are limited to 20 MB.
+
 Publishing is deliberately conservative so you cannot expose files by accident:
 
 - The entry must not be a symlink or have a name starting with `.`.
-- A single file must be a regular `.html` or `.htm` file.
+- A single file must be a regular file of a supported type: `.html`/`.htm`
+  (served as is) or one of the formats below, which are converted at publish time.
 - In a directory, dot-prefixed files and directories (`.env`, `.git`, ...) are
   skipped silently. A symlink or other non-regular file inside the directory
   fails the publish with an error naming the path.
