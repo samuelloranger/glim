@@ -154,8 +154,11 @@ also opens the link with `xdg-open`.
 glim status
 ```
 
-Prints the store root, the live preview count (and how many are pinned), disk
-use, and the next expiry due for garbage collection.
+Prints the store root, whether the server is running (and its port), the live
+preview count (and how many are pinned), disk use, and the next expiry due for
+garbage collection. When the domain is `https` and the server is running, it adds
+a one-line note that glim itself serves plain http and needs a TLS-terminating
+proxy that sends `X-Forwarded-Proto: https`.
 
 ## mcp
 

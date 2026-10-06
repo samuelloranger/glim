@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/samuelloranger/glim/internal/auth"
@@ -37,8 +38,9 @@ type Deps struct {
 }
 
 type Server struct {
-	d   Deps
-	mux *http.ServeMux
+	d         Deps
+	mux       *http.ServeMux
+	plainOnce sync.Once
 }
 
 func (s *Server) poke() {
@@ -67,6 +69,7 @@ func New(d Deps) *Server {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
+	s.warnPlainHTTP(r)
 	s.mux.ServeHTTP(w, r)
 }
 
@@ -276,4 +279,39 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 		return true
 	}
 	return strings.EqualFold(u.Host, requestHost(r))
+}
+
+// warnPlainHTTP logs once when the configured domain is https (SecureCookies)
+// but a request arrives over plain http with no proxy header saying the client
+// used https. Browsers drop Secure cookies on http, so sign-in would silently
+// loop; the usual cause is a proxy that doesn't send X-Forwarded-Proto.
+func (s *Server) warnPlainHTTP(r *http.Request) {
+	if !s.d.SecureCookies || !PlainHTTP(r) {
+		return
+	}
+	s.plainOnce.Do(func() { s.d.Logf("%s", PlainHTTPWarning) })
+}
+
+// PlainHTTPWarning is the advice logged by serve and shown by status.
+const PlainHTTPWarning = "warning: the domain is https but a request arrived over plain http " +
+	"without X-Forwarded-Proto: https. Browsers won't keep the sign-in cookie; make the " +
+	"reverse proxy terminate TLS and send that header (see docs/serving.md)"
+
+// PlainHTTP reports a request that reached glim over plain http with no proxy
+// header (X-Forwarded-Proto or Forwarded proto=) claiming an https client.
+func PlainHTTP(r *http.Request) bool {
+	if r.TLS != nil {
+		return false
+	}
+	for _, v := range r.Header.Values("X-Forwarded-Proto") {
+		if strings.Contains(strings.ToLower(v), "https") {
+			return false
+		}
+	}
+	for _, v := range r.Header.Values("Forwarded") {
+		if strings.Contains(strings.ToLower(v), "proto=https") {
+			return false
+		}
+	}
+	return true
 }

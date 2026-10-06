@@ -11,6 +11,8 @@ const THUMB_WIDTH = 1280;
 export function PreviewCard(props: {
   preview: Preview;
   override?: Override;
+  /** The server removed this preview; play the close animation. */
+  gone?: boolean;
   now: number;
   arriving: boolean;
   onExtend: (ttl: string, label: string) => void;
@@ -26,7 +28,7 @@ export function PreviewCard(props: {
   const leftMs = createMemo(() => Date.parse(expires()) - props.now);
   const ember = createMemo(() => !pinned() && leftMs() < EMBER_MS);
   const closing = createMemo(
-    () => props.override?.removed === true || (!pinned() && leftMs() <= 0),
+    () => props.override?.removed === true || props.gone === true || (!pinned() && leftMs() <= 0),
   );
   const href = () => `/${props.preview.name}/`;
   let windowEl: HTMLAnchorElement | undefined;
