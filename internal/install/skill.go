@@ -109,8 +109,11 @@ func Uninstall(target string, d Deps) ([]string, error) {
 	}
 	dir, _ := skillDir(target, d)
 	ok, err := removeFile(filepath.Join(dir, "SKILL.md"))
-	if err == nil {
-		os.Remove(dir) // only succeeds when empty; never touches foreign files
+	if err == nil && ok {
+		// Only prune a real, empty directory; never unlink a symlinked skill dir.
+		if fi, lerr := os.Lstat(dir); lerr == nil && fi.IsDir() {
+			os.Remove(dir) // only succeeds when empty; never touches foreign files
+		}
 	}
 	add(ok, "skill in "+dir)
 	return steps, err
