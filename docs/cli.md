@@ -7,7 +7,18 @@ glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--loca
 ```
 
 Copies `entry` into a new preview and prints its URL. A single file is served as
-`index.html`; a directory is copied as-is and must contain its own `index.html`.
+`index.html`; a directory is copied and must contain its own `index.html`.
+
+Publishing is deliberately conservative so you cannot expose files by accident:
+
+- The entry must not be a symlink or have a name starting with `.`.
+- A single file must be a regular `.html` or `.htm` file.
+- In a directory, dot-prefixed files and directories (`.env`, `.git`, ...) are
+  skipped silently. A symlink or other non-regular file inside the directory
+  fails the publish with an error naming the path.
+- A directory may hold at most 5000 files and 200 MB in total.
+- Republishing to an existing `--name` is atomic: the new version is built
+  aside and swapped in, so a failed publish leaves the old preview untouched.
 
 | flag | meaning |
 | --- | --- |

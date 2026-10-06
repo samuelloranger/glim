@@ -21,7 +21,7 @@ func (s *Store) Fingerprint() (string, error) {
 	}
 	h := sha256.New()
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		info, err := os.Stat(filepath.Join(s.Root, e.Name(), ManifestFile))
@@ -56,14 +56,54 @@ type PublishResult struct {
 	Expires time.Time
 }
 
+// AllowedFileExts is the single place that decides which single-file entries
+// may be published. Extend it here to allow more types.
+var AllowedFileExts = []string{".html", ".htm"}
+
+// Directory publish limits, so pointing glim at a huge tree fails fast.
+const (
+	MaxPublishBytes int64 = 200 << 20
+	MaxPublishFiles       = 5000
+)
+
+const (
+	tmpPrefix = ".tmp-"
+	oldPrefix = ".old-"
+	staleAge  = time.Hour
+)
+
+func extAllowed(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	for _, a := range AllowedFileExts {
+		if ext == a {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) Publish(entry, title, project, session string, ttl time.Duration, name string) (PublishResult, error) {
 	abs, err := filepath.Abs(entry)
 	if err != nil {
 		return PublishResult{}, err
 	}
-	info, err := os.Stat(abs)
+	info, err := os.Lstat(abs)
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("cannot read %s: %w", entry, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return PublishResult{}, fmt.Errorf("refusing to publish %s: it is a symlink", entry)
+	}
+	if strings.HasPrefix(filepath.Base(abs), ".") {
+		return PublishResult{}, fmt.Errorf("refusing to publish %s: hidden (dot-prefixed) names are never published", entry)
+	}
+	if !info.IsDir() {
+		if !info.Mode().IsRegular() {
+			return PublishResult{}, fmt.Errorf("refusing to publish %s: not a regular file", entry)
+		}
+		if !extAllowed(abs) {
+			return PublishResult{}, fmt.Errorf("refusing to publish %s: only %s files can be published as a single file", entry, strings.Join(AllowedFileExts, ", "))
+		}
 	}
 
 	if name != "" {
@@ -79,30 +119,36 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 		}
 		name = NewName(label)
 	}
-	dir := filepath.Join(s.Root, name)
-	// Clean slate so an update never leaks files from a prior version, and the
-	// clock resets like a fresh publish.
-	if err := os.RemoveAll(dir); err != nil {
+	if err := os.MkdirAll(s.Root, 0o755); err != nil {
 		return PublishResult{}, err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+
+	// Build everything in a hidden temp dir; the live preview (if any) is only
+	// touched by the final swap, so a failure leaves it intact.
+	tmp, err := os.MkdirTemp(s.Root, tmpPrefix+name+"-")
+	if err != nil {
+		return PublishResult{}, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			os.RemoveAll(tmp)
+		}
+	}()
+	if err := os.Chmod(tmp, 0o755); err != nil {
 		return PublishResult{}, err
 	}
 
 	if info.IsDir() {
-		if _, err := os.Stat(filepath.Join(abs, "index.html")); err != nil {
-			os.RemoveAll(dir)
+		idx, err := os.Lstat(filepath.Join(abs, "index.html"))
+		if err != nil || !idx.Mode().IsRegular() {
 			return PublishResult{}, fmt.Errorf("directory %s has no index.html", entry)
 		}
-		if err := copyTree(abs, dir); err != nil {
-			os.RemoveAll(dir)
+		if err := copyTree(abs, tmp); err != nil {
 			return PublishResult{}, err
 		}
-	} else {
-		if err := copyFile(abs, filepath.Join(dir, "index.html")); err != nil {
-			os.RemoveAll(dir)
-			return PublishResult{}, err
-		}
+	} else if err := copyFile(abs, filepath.Join(tmp, "index.html")); err != nil {
+		return PublishResult{}, err
 	}
 
 	created := s.now()
@@ -114,9 +160,27 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 		Created: created,
 		Expires: created.Add(ttl),
 	}
-	if err := writeManifest(dir, m); err != nil {
-		os.RemoveAll(dir)
+	if err := writeManifest(tmp, m); err != nil {
 		return PublishResult{}, err
+	}
+
+	dir := filepath.Join(s.Root, name)
+	var aside string
+	if _, err := os.Lstat(dir); err == nil {
+		aside = filepath.Join(s.Root, oldPrefix+name+"-"+filepath.Base(tmp)[len(tmpPrefix):])
+		if err := os.Rename(dir, aside); err != nil {
+			return PublishResult{}, err
+		}
+	}
+	if err := os.Rename(tmp, dir); err != nil {
+		if aside != "" {
+			_ = os.Rename(aside, dir)
+		}
+		return PublishResult{}, err
+	}
+	ok = true
+	if aside != "" {
+		os.RemoveAll(aside)
 	}
 
 	_, _ = s.GC()
@@ -143,7 +207,7 @@ func (s *Store) List() ([]Manifest, error) {
 	var out []Manifest
 	now := s.now()
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		m, err := readManifest(filepath.Join(s.Root, e.Name()))
@@ -210,7 +274,7 @@ func (s *Store) Extend(name string, ttl time.Duration) error {
 
 func (s *Store) DiskUsage() (int64, error) {
 	var total int64
-	err := filepath.WalkDir(s.Root, func(_ string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(s.Root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil
@@ -218,6 +282,10 @@ func (s *Store) DiskUsage() (int64, error) {
 			return err
 		}
 		if d.IsDir() {
+			// In-progress/aside publish dirs under the root are not previews.
+			if path != s.Root && filepath.Dir(path) == s.Root && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		info, err := d.Info()
@@ -245,6 +313,17 @@ func (s *Store) GC() (int, error) {
 			continue
 		}
 		dir := filepath.Join(s.Root, e.Name())
+		if strings.HasPrefix(e.Name(), tmpPrefix) || strings.HasPrefix(e.Name(), oldPrefix) {
+			if fi, err := e.Info(); err == nil && now.Sub(fi.ModTime()) > staleAge {
+				if os.RemoveAll(dir) == nil {
+					removed++
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
 		m, err := readManifest(dir)
 		if err != nil {
 			continue
@@ -275,7 +354,12 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
+// copyTree copies src into dst, skipping dot-prefixed files and directories,
+// failing on symlinks and other non-regular files, and enforcing the size and
+// file-count caps.
 func copyTree(src, dst string) error {
+	var total int64
+	var files int
 	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -284,9 +368,33 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		if rel == "." {
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		target := filepath.Join(dst, rel)
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
+		}
+		if !d.Type().IsRegular() {
+			return fmt.Errorf("refusing to publish: %s is a symlink or not a regular file", path)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		files++
+		total += info.Size()
+		if files > MaxPublishFiles {
+			return fmt.Errorf("directory too large: more than %d files (at %s)", MaxPublishFiles, path)
+		}
+		if total > MaxPublishBytes {
+			return fmt.Errorf("directory too large: more than %d MB (at %s)", MaxPublishBytes>>20, path)
 		}
 		return copyFile(path, target)
 	})

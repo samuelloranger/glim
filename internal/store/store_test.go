@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -370,5 +371,173 @@ func TestFingerprintTracksChanges(t *testing.T) {
 	s.Remove(res.Name)
 	if gone, _ := s.Fingerprint(); gone != empty {
 		t.Fatal("remove should restore the empty fingerprint")
+	}
+}
+
+func TestPublishRefusals(t *testing.T) {
+	tmp := t.TempDir()
+	write := func(rel, c string) string {
+		p := filepath.Join(tmp, rel)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	real := write("real.html", "x")
+	link := filepath.Join(tmp, "link.html")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	dot := write(".hidden.html", "x")
+	key := write("id_rsa", "secret")
+	exe := write("run.sh", "x")
+	symDir := filepath.Join(tmp, "symdir")
+	write("symdir/index.html", "x")
+	os.Symlink(key, filepath.Join(symDir, "leak.txt"))
+	bigDir := filepath.Join(tmp, "big")
+	write("big/index.html", "x")
+	for i := 0; i < MaxPublishFiles; i++ {
+		write(filepath.Join("big", "f", fmt.Sprintf("%d.txt", i)), "")
+	}
+
+	cases := []struct {
+		name, entry, want string
+	}{
+		{"symlink entry", link, "symlink"},
+		{"dotfile entry", dot, "hidden"},
+		{"extensionless key", key, "only"},
+		{"disallowed extension", exe, "only"},
+		{"symlink inside dir", symDir, "symlink"},
+		{"file count cap", bigDir, "too large"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newTestStore(t)
+			_, err := s.Publish(c.entry, "", "", "", time.Hour, "")
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err = %v, want containing %q", err, c.want)
+			}
+			ms, _ := s.List()
+			if len(ms) != 0 {
+				t.Fatalf("refused publish left a preview: %v", ms)
+			}
+			entries, _ := os.ReadDir(s.Root)
+			if len(entries) != 0 {
+				t.Fatalf("refused publish left residue in store root: %v", entries)
+			}
+		})
+	}
+}
+
+func TestPublishSizeCap(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte("x"), 0o644)
+	f, _ := os.Create(filepath.Join(dir, "blob.bin"))
+	f.Truncate(MaxPublishBytes + 1)
+	f.Close()
+	s := newTestStore(t)
+	if _, err := s.Publish(dir, "", "", "", time.Hour, ""); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPublishDirSkipsDotEntries(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET"), 0o600)
+	os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	os.WriteFile(filepath.Join(dir, ".git", "config"), []byte("x"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "sub", ".ssh"), 0o755)
+	os.WriteFile(filepath.Join(dir, "sub", ".ssh", "k"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "sub", "a.css"), []byte("x"), 0o644)
+	s := newTestStore(t)
+	res, err := s.Publish(dir, "", "", "", time.Hour, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(s.Root, res.Name)
+	for _, p := range []string{".env", ".git", filepath.Join("sub", ".ssh")} {
+		if _, err := os.Lstat(filepath.Join(root, p)); err == nil {
+			t.Fatalf("%s was published", p)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "sub", "a.css")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepublishAtomic(t *testing.T) {
+	s := newTestStore(t)
+	good := t.TempDir()
+	os.WriteFile(filepath.Join(good, "index.html"), []byte("v1"), 0o644)
+	if _, err := s.Publish(good, "", "", "", time.Hour, "site"); err != nil {
+		t.Fatal(err)
+	}
+
+	bad := t.TempDir()
+	os.WriteFile(filepath.Join(bad, "index.html"), []byte("v2"), 0o644)
+	os.Symlink("/etc/passwd", filepath.Join(bad, "leak"))
+	if _, err := s.Publish(bad, "", "", "", time.Hour, "site"); err == nil {
+		t.Fatal("expected failure")
+	}
+	got, err := os.ReadFile(filepath.Join(s.Root, "site", "index.html"))
+	if err != nil || string(got) != "v1" {
+		t.Fatalf("old contents lost: %q %v", got, err)
+	}
+	if _, err := s.Get("site"); err != nil {
+		t.Fatalf("manifest lost: %v", err)
+	}
+	entries, _ := os.ReadDir(s.Root)
+	if len(entries) != 1 {
+		t.Fatalf("residue: %v", entries)
+	}
+
+	os.Remove(filepath.Join(bad, "leak"))
+	if _, err := s.Publish(bad, "", "", "", time.Hour, "site"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(filepath.Join(s.Root, "site", "index.html"))
+	if string(got) != "v2" {
+		t.Fatalf("not replaced: %q", got)
+	}
+	entries, _ = os.ReadDir(s.Root)
+	if len(entries) != 1 {
+		t.Fatalf("residue after swap: %v", entries)
+	}
+}
+
+func TestHiddenDirsIgnoredAndStaleOnesGCd(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	mk := func(name string, age time.Duration) string {
+		d := filepath.Join(s.Root, name)
+		os.MkdirAll(d, 0o755)
+		writeManifest(d, Manifest{Name: name, Created: now, Expires: now.Add(time.Hour)})
+		os.WriteFile(filepath.Join(d, "f"), []byte("12345"), 0o644)
+		os.Chtimes(d, now.Add(-age), now.Add(-age))
+		return d
+	}
+	fresh := mk(".tmp-a-1", time.Minute)
+	stale := mk(".tmp-b-2", 2*time.Hour)
+	staleOld := mk(".old-c-3", 2*time.Hour)
+	if ms, _ := s.List(); len(ms) != 0 {
+		t.Fatalf("List included hidden dirs: %v", ms)
+	}
+	if n, _ := s.DiskUsage(); n != 0 {
+		t.Fatalf("DiskUsage counted hidden dirs: %d", n)
+	}
+	if fp, _ := s.Fingerprint(); fp == "" {
+		t.Fatal("empty fingerprint")
+	}
+	s.GC()
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatal("fresh tmp removed")
+	}
+	for _, p := range []string{stale, staleOld} {
+		if _, err := os.Stat(p); err == nil {
+			t.Fatalf("%s not collected", p)
+		}
 	}
 }
