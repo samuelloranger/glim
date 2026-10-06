@@ -233,6 +233,37 @@ func TestRemoveByName(t *testing.T) {
 	}
 }
 
+func TestOnRemoveFiresForRemoveAndGCButNotRepublish(t *testing.T) {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	s := newTestStore(t)
+	s.Now = func() time.Time { return base }
+	var got []string
+	s.OnRemove = func(name string) { got = append(got, name) }
+	e := writeTemp(t, "a.html", "a")
+	if _, err := s.Publish(e, "t", "", "", time.Hour, "keep-me"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Publish(e, "t", "", "", time.Hour, "keep-me"); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("republish fired OnRemove: %v", got)
+	}
+	if err := s.Remove("keep-me"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Publish(e, "t", "", "", time.Hour, "expires"); err != nil {
+		t.Fatal(err)
+	}
+	s.Now = func() time.Time { return base.Add(2 * time.Hour) }
+	if _, err := s.GC(); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "keep-me" || got[1] != "expires" {
+		t.Fatalf("OnRemove calls = %v", got)
+	}
+}
+
 func TestPinSurvivesExpiryAndGC(t *testing.T) {
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	s := newTestStore(t)

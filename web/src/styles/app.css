@@ -362,6 +362,17 @@ select {
   white-space: nowrap;
 }
 
+.meta .seen {
+  grid-column: 1 / -1;
+  color: var(--haze);
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+}
+
+.meta .seen.never {
+  opacity: 0.7;
+}
+
 .chip {
   justify-self: end;
   padding: 0 8px;

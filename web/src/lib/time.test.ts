@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { durationMs, formatBytes, formatLeft, lifeFraction, parseTTL, skewMs } from "./time";
+import {
+  durationMs,
+  formatAgo,
+  formatBytes,
+  formatLeft,
+  formatSeen,
+  lifeFraction,
+  parseTTL,
+  skewMs,
+} from "./time";
 
 describe("formatLeft", () => {
   test.each([
@@ -47,4 +56,23 @@ test("durationMs parses Go durations used by presets and parseTTL", () => {
   expect(durationMs("168h")).toBe(7 * 86_400_000);
   expect(durationMs("5400s")).toBe(5_400_000);
   expect(durationMs("1h30m")).toBe(5_400_000);
+});
+
+describe("formatSeen", () => {
+  const now = Date.parse("2026-01-01T12:00:00Z");
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  test("never opened", () => {
+    expect(formatSeen(0, null, now)).toBe("not opened yet");
+    expect(formatSeen(0, ago(1000), now)).toBe("not opened yet");
+    expect(formatSeen(2, "garbage", now)).toBe("not opened yet");
+  });
+  test("count and recency", () => {
+    expect(formatSeen(3, ago(5 * 60_000), now)).toBe("seen 3× · 5m ago");
+    expect(formatSeen(1, ago(20_000), now)).toBe("seen 1× · just now");
+    expect(formatSeen(12, ago(3 * 3_600_000), now)).toBe("seen 12× · 3h ago");
+    expect(formatSeen(2, ago(2 * 86_400_000), now)).toBe("seen 2× · 2d ago");
+  });
+  test("clock skew into the future reads as just now", () => {
+    expect(formatAgo(-5000)).toBe("just now");
+  });
 });

@@ -6,6 +6,8 @@ export type Preview = {
   expires: string;
   pinned: boolean;
   url: string;
+  views: number;
+  lastSeen: string | null;
 };
 
 export type Status = {

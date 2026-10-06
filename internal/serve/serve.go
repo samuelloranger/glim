@@ -22,7 +22,12 @@ const PreviewCSP = "sandbox allow-scripts allow-forms allow-popups allow-modals 
 
 // PreviewHandler serves live previews from st.Root. Unknown, invalid or
 // expired slugs, directory listings and any dot-prefixed path segment 404.
-func PreviewHandler(st *store.Store) http.Handler {
+func PreviewHandler(st *store.Store) http.Handler { return PreviewHandlerWith(st, nil) }
+
+// PreviewHandlerWith is PreviewHandler plus open tracking: each real page open
+// of a live preview (see CountsAsView) is passed to views.Record, unless the
+// request carries a valid owner cookie. A nil views disables tracking.
+func PreviewHandlerWith(st *store.Store, views *Views) http.Handler {
 	fsys := noListFS{http.Dir(st.Root)}
 	files := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +59,7 @@ func PreviewHandler(st *store.Store) http.Handler {
 			base = strings.TrimRight(base, "/")
 			return cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, declaredMeta(doc)), ""
 		}) {
+			views.track(r, slug)
 			return
 		}
 		files.ServeHTTP(w, r)
@@ -95,10 +101,11 @@ type Options struct {
 	Store *store.Store
 	API   http.Handler // serves /_glim/api/*
 	Web   http.Handler // serves / and the rest of /_glim/*
+	Views *Views       // optional: counts page opens
 }
 
 func NewRouter(o Options) http.Handler {
-	previews := PreviewHandler(o.Store)
+	previews := PreviewHandlerWith(o.Store, o.Views)
 	zone := func(h http.Handler, w http.ResponseWriter, r *http.Request) {
 		if h == nil {
 			http.NotFound(w, r)

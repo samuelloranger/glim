@@ -94,7 +94,7 @@ server. Requires a domain to be set.
 ## ls · rm · gc
 
 ```sh
-glim ls                 # list live previews (name, title, age, expiry)
+glim ls                 # list live previews (name, title, age, expiry, views, last seen)
 glim rm <name>...       # remove previews now
 glim gc                 # prune expired previews
 ```
@@ -136,7 +136,8 @@ glim mcp
 ```
 
 Runs glim as an MCP server over stdio, exposing `present`, `list`, `revoke`,
-`pin`, and `extend` tools. Normally you do not call this directly — `glim
+`pin`, and `extend` tools. `list` includes each preview's view count and
+last-opened time (see [Dashboard](./dashboard.md#seen-indicator)). Normally you do not call this directly — `glim
 install` wires it into an agent.
 
 ## install

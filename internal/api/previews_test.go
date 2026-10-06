@@ -64,3 +64,32 @@ func TestPinAndRemove(t *testing.T) {
 		t.Fatalf("no csrf = %d", rec.Code)
 	}
 }
+
+func TestPreviewSnapshotCarriesViews(t *testing.T) {
+	e := newEnv(t)
+	s := e.signIn("sam@example.com")
+	seen := publishPreview(t, e.st, "Seen", time.Hour)
+	fresh := publishPreview(t, e.st, "Fresh", time.Hour)
+	for i := 0; i < 3; i++ {
+		if err := e.db.RecordView(t.Context(), seen); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b := jsonBody(t, e.do(http.MethodGet, "/_glim/api/previews", nil, &s, nil))
+	got := map[string]map[string]any{}
+	for _, p := range b["previews"].([]any) {
+		m := p.(map[string]any)
+		got[m["name"].(string)] = m
+	}
+	if got[seen]["views"] != float64(3) || got[seen]["lastSeen"] == nil {
+		t.Fatalf("seen = %v", got[seen])
+	}
+	if got[fresh]["views"] != float64(0) || got[fresh]["lastSeen"] != nil {
+		t.Fatalf("fresh = %v", got[fresh])
+	}
+	// pin/extend responses carry the same fields
+	rec := e.do(http.MethodPost, "/_glim/api/previews/"+seen+"/pin", nil, &s, nil)
+	if jsonBody(t, rec)["views"] != float64(3) {
+		t.Fatalf("pin response = %s", rec.Body.String())
+	}
+}

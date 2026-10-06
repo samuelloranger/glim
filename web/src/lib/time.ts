@@ -59,3 +59,21 @@ export function durationMs(goDuration: string): number {
   }
   return ms;
 }
+
+/** "just now", "5m ago", "3h ago", "2d ago". */
+export function formatAgo(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+/** Card label: "seen 3× · 5m ago", or "not opened yet" before the first open. */
+export function formatSeen(views: number, lastSeen: string | null, nowMs: number): string {
+  const t = lastSeen ? Date.parse(lastSeen) : Number.NaN;
+  if (views <= 0 || Number.isNaN(t)) return "not opened yet";
+  return `seen ${views}× · ${formatAgo(nowMs - t)}`;
+}

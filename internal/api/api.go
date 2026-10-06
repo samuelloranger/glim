@@ -132,6 +132,28 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, sess auth.Session) {
 	})
 }
 
+// setOwnerCookie marks this browser as the owner on preview paths (Path=/, so
+// unlike the session cookie it reaches them) so the owner's own opens are not
+// counted as views. It carries an HMAC of the user id and grants nothing else.
+func (s *Server) setOwnerCookie(w http.ResponseWriter, sess auth.Session) {
+	tok, err := s.d.Auth.OwnerToken(sess.User.ID)
+	if err != nil {
+		s.d.Logf("api: owner cookie: %v", err)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.OwnerCookie, Value: tok, Path: "/", Expires: sess.ExpiresAt,
+		HttpOnly: true, Secure: s.d.SecureCookies, SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (s *Server) clearOwnerCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.OwnerCookie, Value: "", Path: "/", MaxAge: -1,
+		HttpOnly: true, Secure: s.d.SecureCookies, SameSite: http.SameSiteLaxMode,
+	})
+}
+
 func (s *Server) clearCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name: cookieName, Value: "", Path: "/_glim", MaxAge: -1,

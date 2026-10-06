@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+
+	"github.com/samuelloranger/glim/internal/auth"
 )
 
 func TestSetupFlow(t *testing.T) {
@@ -29,9 +31,13 @@ func TestSetupFlow(t *testing.T) {
 		t.Fatalf("setup = %d %s", rec.Code, rec.Body.String())
 	}
 	c := rec.Result().Cookies()
-	if len(c) != 1 || c[0].Name != cookieName || !c[0].HttpOnly || !c[0].Secure ||
+	if len(c) != 2 || c[0].Name != cookieName || !c[0].HttpOnly || !c[0].Secure ||
 		c[0].SameSite != http.SameSiteStrictMode || c[0].Path != "/_glim" {
 		t.Fatalf("cookie = %+v", c)
+	}
+	if o := c[1]; o.Name != auth.OwnerCookie || o.Path != "/" || !o.HttpOnly || !o.Secure ||
+		o.SameSite != http.SameSiteLaxMode || !e.db.IsOwnerToken(o.Value) {
+		t.Fatalf("owner cookie = %+v", o)
 	}
 	b := jsonBody(t, rec)
 	if b["csrf"] == "" || b["user"].(map[string]any)["email"] != "sam@example.com" {
@@ -84,7 +90,25 @@ func TestLoginSuccessSetsCookie(t *testing.T) {
 	e := newEnv(t)
 	e.db.CreateUser(t.Context(), "sam@example.com", testPass)
 	rec := e.do(http.MethodPost, "/_glim/api/login", map[string]string{"email": "Sam@Example.com", "password": testPass}, nil, nil)
-	if rec.Code != 200 || len(rec.Result().Cookies()) != 1 {
+	if rec.Code != 200 || len(rec.Result().Cookies()) != 2 {
 		t.Fatalf("login = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLogoutClearsOwnerCookie(t *testing.T) {
+	e := newEnv(t)
+	s := e.signIn("sam@example.com")
+	rec := e.do(http.MethodPost, "/_glim/api/logout", nil, &s, nil)
+	if rec.Code != 204 {
+		t.Fatalf("logout = %d", rec.Code)
+	}
+	var cleared bool
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.OwnerCookie && c.Path == "/" && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Fatalf("owner cookie not cleared: %v", rec.Result().Cookies())
 	}
 }
