@@ -37,6 +37,37 @@ a fixed card served at `/_glim/og.png`. A tag the page already declares is never
 overridden or duplicated. Larger and non-HTML files are streamed unchanged, and
 `HEAD` and `Range` requests keep working.
 
+## Password-protected previews
+
+A preview whose manifest has a `password_hash` (set with `glim <entry>
+--password`, `glim lock`, or the MCP `present` tool's `password`) is locked.
+Every request without a valid unlock cookie is refused: the HTML page gets a
+glim-owned unlock form with status `401`, and every other file gets a plain
+`401`. The form needs no external assets, and its link card says only
+"Password-protected preview", with no title, project or lifetime.
+
+Submitting the form `POST`s to the page's own path. A correct password sets a
+`glim_unlock_<slug>` cookie (`HttpOnly`, `Path=/<slug>/`) and redirects back
+(`303`). Its value is an HMAC of the slug and the current password hash under
+the server's secret, so changing or removing the password invalidates every
+earlier unlock. Attempts are rate-limited per client address and preview
+(repeated failures are answered with `429` and `Retry-After`). Unlock attempts
+never count as [views](./dashboard.md#seen-indicator), and a signed-in dashboard
+owner (the `glim_owner` cookie, valid only while their session is live)
+bypasses the lock. When the owner opens a locked page this way, glim also sets
+that preview's unlock cookie so its scripts, styles and images load too.
+Publishing, locking, unlocking, pinning and extending a preview are serialized,
+and republishing a locked preview whose manifest cannot be read fails rather
+than silently dropping the lock.
+
+Previews run in a sandbox with an opaque origin, which browsers treat as
+cross-site for their sub-resource requests. They only send the unlock cookie
+there when it is `SameSite=None; Secure`, so glim sets those attributes when
+the base URL is `https://` (set `--domain` behind a TLS proxy). Over plain
+`http` the cookie is `SameSite=Lax`: a locked single-file preview works, but a
+locked directory preview's scripts, styles and images will not load. Use https
+for protected directory previews.
+
 The site root serves the [dashboard](./dashboard.md). Its API lives under
 `/_glim/`, and its live updates use Server-Sent Events. A standard reverse proxy
 (including the `glim caddy` snippet) needs no extra configuration for them.

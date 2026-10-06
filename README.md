@@ -62,6 +62,7 @@ glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h]    show or s
 glim caddy                                                             print a reverse-proxy vhost
 glim ls | rm <name>... | gc                                           manage previews
 glim extend <name> <ttl> | pin <name>                                 change a preview's lifetime
+glim <entry> --password | lock <name> | unlock <name>                 password-protect a preview
 glim open <name> | status                                             open a link / show status
 glim mcp                                                              run as an MCP server
 glim install <claude|codex|cursor>                                    wire into an agent

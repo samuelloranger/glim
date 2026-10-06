@@ -39,14 +39,23 @@ func TestViewsRecordStatsDelete(t *testing.T) {
 
 func TestOwnerToken(t *testing.T) {
 	db, _ := openTest(t)
-	tok, err := db.OwnerToken(7)
+	ctx := context.Background()
+	u, err := db.CreateUser(ctx, "owner@example.com", "hunter22!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := db.CreateSession(ctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := db.OwnerToken(u.ID, sess.Token)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !db.IsOwnerToken(tok) {
 		t.Fatal("valid token rejected")
 	}
-	for _, bad := range []string{"", "7", "7.", ".abc", "8" + tok[1:], tok + "0", "7.deadbeef", tok[:len(tok)-1]} {
+	for _, bad := range []string{"", "1", "1.", ".abc", "1.ab.cd", "2" + tok[1:], tok + "0", tok[:len(tok)-1]} {
 		if db.IsOwnerToken(bad) {
 			t.Errorf("forged token %q accepted", bad)
 		}
@@ -57,9 +66,57 @@ func TestOwnerToken(t *testing.T) {
 	}
 }
 
+func TestOwnerTokenDiesWithSession(t *testing.T) {
+	ctx := context.Background()
+	mk := func(db *DB, email string) (User, Session, string) {
+		u, err := db.CreateUser(ctx, email, "hunter22!")
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := db.CreateSession(ctx, u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tok, err := db.OwnerToken(u.ID, s.Token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u, s, tok
+	}
+	db, clk := openTest(t)
+	_, s, tok := mk(db, "a@example.com")
+	if err := db.DeleteSession(ctx, s.Token); err != nil {
+		t.Fatal(err)
+	}
+	if db.IsOwnerToken(tok) {
+		t.Error("token valid after logout")
+	}
+	_, _, tok = mk(db, "b@example.com")
+	if err := db.SetPassword(ctx, "b@example.com", "another-pass1"); err != nil {
+		t.Fatal(err)
+	}
+	if db.IsOwnerToken(tok) {
+		t.Error("token valid after password reset")
+	}
+	_, _, tok = mk(db, "c@example.com")
+	if err := db.DeleteUser(ctx, "c@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if db.IsOwnerToken(tok) {
+		t.Error("token valid after user removal")
+	}
+	_, _, tok = mk(db, "d@example.com")
+	clk.t = clk.t.Add(SessionTTL + time.Hour)
+	if db.IsOwnerToken(tok) {
+		t.Error("token valid after session expiry")
+	}
+}
+
 func TestOwnerSecretPersists(t *testing.T) {
 	db, _ := openTest(t)
-	tok, _ := db.OwnerToken(1)
+	u, _ := db.CreateUser(context.Background(), "owner@example.com", "hunter22!")
+	sess, _ := db.CreateSession(context.Background(), u)
+	tok, _ := db.OwnerToken(u.ID, sess.Token)
 	db.owner = ownerKeyCache{} // simulate a restart: the key must reload from disk
 	if !db.IsOwnerToken(tok) {
 		t.Fatal("token invalid after secret reload")

@@ -59,6 +59,7 @@ type PublishResult struct {
 	Name    string
 	URL     string
 	Expires time.Time
+	Locked  bool
 }
 
 // AllowedFileExts is the single place that decides which single-file entries
@@ -93,6 +94,12 @@ func extAllowed(name string) bool {
 }
 
 func (s *Store) Publish(entry, title, project, session string, ttl time.Duration, name string) (PublishResult, error) {
+	return s.PublishLocked(entry, title, project, session, ttl, name, "")
+}
+
+// PublishLocked is Publish with an optional bcrypt passwordHash. An empty hash
+// keeps whatever lock the preview already has when it is republished in place.
+func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Duration, name, passwordHash string) (PublishResult, error) {
 	abs, err := filepath.Abs(entry)
 	if err != nil {
 		return PublishResult{}, err
@@ -174,11 +181,35 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 		Created: created,
 		Expires: created.Add(ttl),
 	}
+	m.PasswordHash = passwordHash
+
+	// Serialize with every other publish, lock, unlock, pin and extend of this
+	// slug from here through the swap, so the manifest read below cannot be
+	// stale and a concurrent change is never lost to the directory swap.
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return PublishResult{}, err
+	}
+	defer unlock()
+
+	dir := filepath.Join(s.Root, name)
+	if passwordHash == "" {
+		// Keep an existing lock. Fail closed: a live directory whose manifest
+		// cannot be read must not be republished unlocked.
+		if _, err := os.Lstat(dir); err == nil {
+			old, err := readManifest(dir)
+			if err != nil {
+				return PublishResult{}, fmt.Errorf("cannot read the existing manifest of %s, refusing to republish it: %w", name, err)
+			}
+			m.PasswordHash = old.PasswordHash
+		} else if !os.IsNotExist(err) {
+			return PublishResult{}, err
+		}
+	}
 	if err := writeManifest(tmp, m); err != nil {
 		return PublishResult{}, err
 	}
 
-	dir := filepath.Join(s.Root, name)
 	var aside string
 	if _, err := os.Lstat(dir); err == nil {
 		aside = filepath.Join(s.Root, oldPrefix+name+"-"+filepath.Base(tmp)[len(tmpPrefix):])
@@ -203,7 +234,7 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 
 	_, _ = s.GC()
 
-	return PublishResult{Name: name, URL: s.url(name), Expires: m.Expires}, nil
+	return PublishResult{Name: name, URL: s.url(name), Expires: m.Expires, Locked: m.Locked()}, nil
 }
 
 // publishConverted renders a non-HTML file into tmp/index.html and keeps the
@@ -274,6 +305,14 @@ func (s *Store) List() ([]Manifest, error) {
 }
 
 func (s *Store) Remove(name string) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	if _, err := readManifest(dir); err != nil {
 		return fmt.Errorf("no such preview: %s", name)
@@ -313,6 +352,14 @@ func (s *Store) Live(name string) (Manifest, bool) {
 }
 
 func (s *Store) Pin(name string) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
 	if err != nil {
@@ -322,7 +369,35 @@ func (s *Store) Pin(name string) error {
 	return writeManifest(dir, m)
 }
 
+// SetPasswordHash locks the named preview behind a bcrypt hash, or unlocks it
+// when hash is empty.
+func (s *Store) SetPasswordHash(name, hash string) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	dir := filepath.Join(s.Root, name)
+	m, err := readManifest(dir)
+	if err != nil {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	m.PasswordHash = hash
+	return writeManifest(dir, m)
+}
+
 func (s *Store) Extend(name string, ttl time.Duration) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
 	if err != nil {

@@ -3,7 +3,7 @@
 ## publish
 
 ```sh
-glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr]
+glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local] [--qr]
 ```
 
 Copies `entry` into a new preview and prints its URL. A single file is served as
@@ -43,6 +43,7 @@ Publishing is deliberately conservative so you cannot expose files by accident:
 | `--project` | Stored as metadata, shown in `glim ls`. |
 | `--ttl` | Lifetime, e.g. `6h`, `30m`; must be greater than zero. Defaults to the configured TTL. |
 | `--name` | Reuse this exact slug to update in place at the same URL (created if absent). Omit for a fresh random link. |
+| `--password` | Protect the preview with a password (see [Password protection](#password-protection)). |
 | `--local` | Auto-start the built-in server and return a loopback link. |
 | `--qr` | Also print a scannable QR code of the URL (to stderr, so stdout stays the plain URL). |
 
@@ -101,6 +102,33 @@ glim gc                 # prune expired previews
 
 Expired previews are also pruned automatically whenever you publish.
 
+## Password protection
+
+```sh
+glim report.html --password      # publish behind a password
+glim lock <name>                 # add or change the password of a live preview
+glim unlock <name>               # remove it
+```
+
+A password-protected preview shows visitors a glim password form instead of its
+content; nothing from the page (not even its title) is revealed until they
+unlock it. Passwords are 8 to 72 bytes, like dashboard passwords.
+
+The password is never taken from a flag or an environment variable, so it does
+not land in shell history or process listings. On a terminal glim prompts
+without echo (and asks twice); when stdin is piped it reads one line:
+
+```sh
+printf '%s\n' "$PREVIEW_PASSWORD" | glim report.html --password
+```
+
+Only a bcrypt hash is stored (in the preview's manifest). Republishing a locked
+preview with `--name` keeps its password unless you pass `--password` again.
+`glim unlock` removes it, and changing or removing the password signs every
+visitor out. The dashboard shows a `locked` badge on locked previews, and you
+(signed in to the dashboard in the same browser) are never asked. See
+[Serving](./serving.md#password-protected-previews) for how it works.
+
 ## extend · pin
 
 ```sh
@@ -135,7 +163,7 @@ use, and the next expiry due for garbage collection.
 glim mcp
 ```
 
-Runs glim as an MCP server over stdio, exposing `present`, `list`, `revoke`,
+Runs glim as an MCP server over stdio, exposing `present` (optionally with a `password`), `list`, `revoke`,
 `pin`, and `extend` tools. `list` includes each preview's view count and
 last-opened time (see [Dashboard](./dashboard.md#seen-indicator)). Normally you do not call this directly — `glim
 install` wires it into an agent.

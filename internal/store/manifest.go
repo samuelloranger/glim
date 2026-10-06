@@ -17,7 +17,12 @@ type Manifest struct {
 	Created time.Time `json:"created"`
 	Expires time.Time `json:"expires"`
 	Pinned  bool      `json:"pinned,omitempty"`
+	// PasswordHash is a bcrypt hash; when set the preview is locked behind it.
+	PasswordHash string `json:"password_hash,omitempty"`
 }
+
+// Locked reports whether the preview requires a password.
+func (m Manifest) Locked() bool { return m.PasswordHash != "" }
 
 func (m Manifest) Expired(now time.Time) bool {
 	if m.Pinned {

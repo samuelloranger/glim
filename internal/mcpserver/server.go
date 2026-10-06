@@ -11,15 +11,17 @@ import (
 )
 
 type PresentInput struct {
-	Path    string `json:"path" jsonschema:"path to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
-	Title   string `json:"title,omitempty" jsonschema:"human title; becomes the readable link slug"`
-	Project string `json:"project,omitempty" jsonschema:"project name, stored as metadata"`
-	TTL     string `json:"ttl,omitempty" jsonschema:"how long the link lives, e.g. 6h or 30m; default 6h"`
-	Name    string `json:"name,omitempty" jsonschema:"reuse this exact slug (e.g. one returned by an earlier present) to publish an update in place at the same URL; created if it does not exist. Omit to get a fresh random link. Lowercase letters, digits and single hyphens only."`
+	Path     string `json:"path" jsonschema:"path to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
+	Title    string `json:"title,omitempty" jsonschema:"human title; becomes the readable link slug"`
+	Project  string `json:"project,omitempty" jsonschema:"project name, stored as metadata"`
+	TTL      string `json:"ttl,omitempty" jsonschema:"how long the link lives, e.g. 6h or 30m; default 6h"`
+	Password string `json:"password,omitempty" jsonschema:"optional: protect the preview with this password (8-72 bytes); visitors must enter it before seeing anything. Omit when republishing with name to keep the existing password."`
+	Name     string `json:"name,omitempty" jsonschema:"reuse this exact slug (e.g. one returned by an earlier present) to publish an update in place at the same URL; created if it does not exist. Omit to get a fresh random link. Lowercase letters, digits and single hyphens only."`
 }
 
 type PresentOutput struct {
 	URL     string `json:"url" jsonschema:"the link to give the user"`
+	Locked  bool   `json:"locked,omitempty" jsonschema:"true when the preview is password-protected"`
 	Name    string `json:"name" jsonschema:"the preview slug"`
 	Expires string `json:"expires" jsonschema:"RFC3339 expiry time"`
 }
@@ -35,6 +37,7 @@ type PreviewInfo struct {
 	Project  string `json:"project,omitempty"`
 	Expires  string `json:"expires" jsonschema:"RFC3339 expiry time"`
 	Views    int64  `json:"views" jsonschema:"how many times the link was opened in a browser (bots, the owner and dashboard thumbnails excluded)"`
+	Locked   bool   `json:"locked,omitempty" jsonschema:"true when the preview is password-protected"`
 	LastSeen string `json:"lastSeen,omitempty" jsonschema:"RFC3339 time of the latest open; omitted if never opened"`
 }
 
@@ -67,6 +70,7 @@ func listPreviews(s *store.Store, in ListInput, stats map[string]auth.ViewStat) 
 			Title:   m.Title,
 			Project: m.Project,
 			Expires: m.Expires.Format(time.RFC3339),
+			Locked:  m.Locked(),
 		}
 		if v := stats[m.Name]; v.Count > 0 {
 			info.Views = v.Count
@@ -112,7 +116,25 @@ func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (
 	} else if err := store.ValidateTTL(ttl); err != nil {
 		return store.PublishResult{}, fmt.Errorf("default ttl: %w", err)
 	}
-	return s.Publish(in.Path, in.Title, in.Project, "", ttl, in.Name)
+	hash := ""
+	if in.Password != "" {
+		h, err := auth.HashPassword(in.Password)
+		if err != nil {
+			return store.PublishResult{}, passwordErr(err)
+		}
+		hash = h
+	}
+	return s.PublishLocked(in.Path, in.Title, in.Project, "", ttl, in.Name, hash)
+}
+
+func passwordErr(err error) error {
+	switch err {
+	case auth.ErrPasswordTooShort:
+		return fmt.Errorf("password must be at least %d characters", auth.MinPasswordChars)
+	case auth.ErrPasswordTooLong:
+		return fmt.Errorf("password must be at most %d bytes", auth.MaxPasswordBytes)
+	}
+	return err
 }
 
 type ExtendInput struct {
@@ -156,7 +178,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 		if err != nil {
 			return nil, PresentOutput{}, err
 		}
-		out := PresentOutput{URL: res.URL, Name: res.Name, Expires: res.Expires.Format(time.RFC3339)}
+		out := PresentOutput{URL: res.URL, Name: res.Name, Expires: res.Expires.Format(time.RFC3339), Locked: res.Locked}
 		result := &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: "Preview published. Give the user this link: " + res.URL}},
 		}
@@ -165,7 +187,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "present",
-		Description: "Publish a self-contained HTML file or directory and return a short-lived link to show the user. Use this to show any visual/HTML preview instead of other preview mechanisms.",
+		Description: "Publish a self-contained HTML file or directory and return a short-lived link to show the user, optionally behind a password. Use this to show any visual/HTML preview instead of other preview mechanisms.",
 		// Creates a new preview each call: writes state, additive (not
 		// destructive), non-idempotent, closed domain (own local store/server).
 		Annotations: &mcp.ToolAnnotations{

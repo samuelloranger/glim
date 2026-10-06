@@ -68,7 +68,14 @@ export function PreviewCard(props: {
         ember={ember()}
       />
       <div class="meta">
-        <h2 class="title">{title()}</h2>
+        <h2 class="title">
+          <Show when={props.preview.locked}>
+            <span class="lockmark" title="Visitors need a password">
+              locked
+            </span>
+          </Show>
+          {title()}
+        </h2>
         <span class={["left", { ember: ember() }]}>
           {pinned() ? "pinned" : formatLeft(leftMs())}
         </span>

@@ -28,6 +28,14 @@ func PreviewHandler(st *store.Store) http.Handler { return PreviewHandlerWith(st
 // of a live preview (see CountsAsView) is passed to views.Record, unless the
 // request carries a valid owner cookie. A nil views disables tracking.
 func PreviewHandlerWith(st *store.Store, views *Views) http.Handler {
+	return PreviewHandlerFull(st, views, nil)
+}
+
+// PreviewHandlerFull is PreviewHandlerWith plus password protection: a preview
+// whose manifest carries a password hash is only served to the owner or to a
+// visitor holding its unlock cookie. A nil unlock leaves locked previews
+// permanently locked (fail closed).
+func PreviewHandlerFull(st *store.Store, views *Views, unlock *Unlock) http.Handler {
 	fsys := noListFS{http.Dir(st.Root)}
 	files := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,20 +51,30 @@ func PreviewHandlerWith(st *store.Store, views *Views) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Security-Policy", PreviewCSP)
+		base := st.BaseURL
+		if base == "" {
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			base = scheme + "://" + r.Host
+		}
+		base = strings.TrimRight(base, "/")
+		if m.Locked() {
+			if r.URL.Path == "/"+slug {
+				// The unlock cookie is scoped to /<slug>/, so always land on it.
+				http.Redirect(w, r, "/"+slug+"/", http.StatusMovedPermanently)
+				return
+			}
+			if !guardLocked(w, r, slug, m, views, unlock, base) {
+				return
+			}
+		}
 		if serveHTMLInjected(w, r, fsys, func(doc []byte) (string, string) {
 			now := time.Now()
 			if st.Now != nil {
 				now = st.Now()
 			}
-			base := st.BaseURL
-			if base == "" {
-				scheme := "http"
-				if r.TLS != nil {
-					scheme = "https"
-				}
-				base = scheme + "://" + r.Host
-			}
-			base = strings.TrimRight(base, "/")
 			return cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, declaredMeta(doc)), ""
 		}) {
 			views.track(r, slug)
@@ -96,16 +114,17 @@ func RunGC(ctx context.Context, st *store.Store, every time.Duration, logf func(
 }
 
 type Options struct {
-	Bind  string
-	Port  int
-	Store *store.Store
-	API   http.Handler // serves /_glim/api/*
-	Web   http.Handler // serves / and the rest of /_glim/*
-	Views *Views       // optional: counts page opens
+	Bind   string
+	Port   int
+	Store  *store.Store
+	API    http.Handler // serves /_glim/api/*
+	Web    http.Handler // serves / and the rest of /_glim/*
+	Views  *Views       // optional: counts page opens
+	Unlock *Unlock      // optional: password-protected previews
 }
 
 func NewRouter(o Options) http.Handler {
-	previews := PreviewHandlerWith(o.Store, o.Views)
+	previews := PreviewHandlerFull(o.Store, o.Views, o.Unlock)
 	zone := func(h http.Handler, w http.ResponseWriter, r *http.Request) {
 		if h == nil {
 			http.NotFound(w, r)

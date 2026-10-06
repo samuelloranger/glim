@@ -5,6 +5,7 @@ export type Preview = {
   created: string;
   expires: string;
   pinned: boolean;
+  locked: boolean;
   url: string;
   views: number;
   lastSeen: string | null;

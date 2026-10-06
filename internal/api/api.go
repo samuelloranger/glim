@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -136,7 +134,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, sess auth.Session) {
 // unlike the session cookie it reaches them) so the owner's own opens are not
 // counted as views. It carries an HMAC of the user id and grants nothing else.
 func (s *Server) setOwnerCookie(w http.ResponseWriter, sess auth.Session) {
-	tok, err := s.d.Auth.OwnerToken(sess.User.ID)
+	tok, err := s.d.Auth.OwnerToken(sess.User.ID, sess.Token)
 	if err != nil {
 		s.d.Logf("api: owner cookie: %v", err)
 		return
@@ -245,49 +243,12 @@ func humanWait(secs int) string {
 
 // --- peers, client IP, origin ---
 
-func trustedPeer(ip string) bool {
-	a, err := netip.ParseAddr(ip)
-	if err != nil {
-		return false
-	}
-	a = a.Unmap()
-	return a.IsLoopback() || a.IsPrivate()
-}
+func trustedPeer(ip string) bool { return auth.TrustedPeer(ip) }
 
-func remoteIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
+func remoteIP(r *http.Request) string { return auth.RemoteIP(r) }
 
-// clientIP is the address throttling keys on. X-Forwarded-For is believed only
-// when the direct peer is loopback or private (a reverse proxy); then the
-// right-most untrusted hop wins.
-func clientIP(r *http.Request) string {
-	peer := remoteIP(r)
-	if !trustedPeer(peer) {
-		return peer
-	}
-	var hops []string
-	for _, v := range r.Header.Values("X-Forwarded-For") {
-		for _, h := range strings.Split(v, ",") {
-			if h = strings.TrimSpace(h); h != "" {
-				hops = append(hops, h)
-			}
-		}
-	}
-	for i := len(hops) - 1; i >= 0; i-- {
-		if !trustedPeer(hops[i]) {
-			return hops[i]
-		}
-	}
-	if len(hops) > 0 {
-		return hops[0]
-	}
-	return peer
-}
+// clientIP is the address throttling keys on (see auth.ClientIP).
+func clientIP(r *http.Request) string { return auth.ClientIP(r) }
 
 func requestHost(r *http.Request) string {
 	if trustedPeer(remoteIP(r)) {
