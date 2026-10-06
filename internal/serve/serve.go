@@ -36,6 +36,10 @@ func PreviewHandlerWith(st *store.Store, views *Views) http.Handler {
 // visitor holding its unlock cookie. A nil unlock leaves locked previews
 // permanently locked (fail closed).
 func PreviewHandlerFull(st *store.Store, views *Views, unlock *Unlock) http.Handler {
+	return previewHandler(st, views, unlock, false)
+}
+
+func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) http.Handler {
 	fsys := noListFS{http.Dir(st.Root)}
 	files := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +79,12 @@ func PreviewHandlerFull(st *store.Store, views *Views, unlock *Unlock) http.Hand
 			if st.Now != nil {
 				now = st.Now()
 			}
-			return cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, declaredMeta(doc)), ""
+			body := ""
+			if live {
+				v, _ := liveVersion(st, slug)
+				body = liveScript(base + LivePathPrefix + slug + "?v=" + v)
+			}
+			return cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, declaredMeta(doc)), body
 		}) {
 			views.track(r, slug)
 			return
@@ -121,10 +130,18 @@ type Options struct {
 	Web    http.Handler // serves / and the rest of /_glim/*
 	Views  *Views       // optional: counts page opens
 	Unlock *Unlock      // optional: password-protected previews
+	// LiveReload serves /_glim/live/<slug> and injects the reload script into
+	// served HTML pages.
+	LiveReload bool
+	Live       *Live // optional: overrides the default stream settings (tests)
 }
 
 func NewRouter(o Options) http.Handler {
-	previews := PreviewHandlerFull(o.Store, o.Views, o.Unlock)
+	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload)
+	live := o.Live
+	if o.LiveReload && live == nil {
+		live = NewLive(o.Store)
+	}
 	zone := func(h http.Handler, w http.ResponseWriter, r *http.Request) {
 		if h == nil {
 			http.NotFound(w, r)
@@ -142,6 +159,8 @@ func NewRouter(o Options) http.Handler {
 			w.Header().Set("Content-Type", "image/png")
 			w.Header().Set("Cache-Control", "public, max-age=86400")
 			http.ServeContent(w, r, "og.png", time.Time{}, bytes.NewReader(ogImage()))
+		case live != nil && strings.HasPrefix(p, LivePathPrefix):
+			live.ServeHTTP(w, r)
 		case strings.HasPrefix(p, "/_glim/api/"):
 			zone(o.API, w, r)
 		case p == "/" || strings.HasPrefix(p, "/_glim/"):

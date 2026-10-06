@@ -16,12 +16,13 @@ glim config                     # show the resolved config
 | `port` | `8787` | Server port. |
 | `root` | `~/.glim/pub` | Where previews are stored and served from. |
 | `ttl` | `6h` | Default lifetime for a preview. |
+| `live_reload` | `true` | Refresh open preview tabs when the preview is republished under the same name. `false` stops glim injecting the reload script and serving `/_glim/live/<slug>`. Set with `glim config --live-reload=false`. |
 
 ## Environment overrides
 
 Every key can be overridden by an environment variable, which wins over the file:
 
-`GLIM_DOMAIN`, `GLIM_BIND`, `GLIM_PORT`, `GLIM_ROOT`, `GLIM_TTL`.
+`GLIM_DOMAIN`, `GLIM_BIND`, `GLIM_PORT`, `GLIM_ROOT`, `GLIM_TTL`, `GLIM_LIVE_RELOAD`.
 
 `GLIM_SESSION_ID`, if set, is recorded on each preview as metadata.
 

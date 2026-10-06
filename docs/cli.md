@@ -77,7 +77,7 @@ reverse proxy; `--port 0` picks a free port.
 
 ```sh
 glim config                                        # show resolved config
-glim config [--domain URL] [--bind ADDR] [--port N] [--root DIR] [--ttl 6h]
+glim config [--domain URL] [--bind ADDR] [--port N] [--root DIR] [--ttl 6h] [--live-reload true|false]
 ```
 
 With no flags, prints the resolved configuration and its file path. With flags,

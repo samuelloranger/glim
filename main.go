@@ -470,7 +470,8 @@ func cmdServe(args []string) error {
 		Logf:          log.Printf,
 	})
 	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler(),
-		Views: &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken},
+		LiveReload: cfg.LiveReloadEnabled(),
+		Views:      &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken},
 		Unlock: &serve.Unlock{Token: db.UnlockToken, Limiter: auth.NewLimiter(nil),
 			Secure: strings.HasPrefix(base, "https://")}})
 }
@@ -493,6 +494,7 @@ func cmdConfig(args []string) error {
 	port := fs.Int("port", 0, "port the server binds")
 	root := fs.String("root", "", "directory previews are stored/served from")
 	ttl := fs.String("ttl", "", "default time to live, e.g. 6h")
+	liveReload := fs.String("live-reload", "", "refresh open tabs when a preview is republished (true or false)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -506,6 +508,7 @@ func cmdConfig(args []string) error {
 		fmt.Printf("port:   %d\n", cfg.Port)
 		fmt.Printf("root:   %s\n", cfg.Root)
 		fmt.Printf("ttl:    %s\n", cfg.TTL)
+		fmt.Printf("live_reload: %t\n", cfg.LiveReloadEnabled())
 		return nil
 	}
 	if *domain != "" {
@@ -522,6 +525,13 @@ func cmdConfig(args []string) error {
 	}
 	if *ttl != "" {
 		cfg.TTL = *ttl
+	}
+	if *liveReload != "" {
+		b, err := strconv.ParseBool(*liveReload)
+		if err != nil {
+			return fmt.Errorf("--live-reload: want true or false, got %q", *liveReload)
+		}
+		cfg.LiveReload = &b
 	}
 	if err := cfg.Save(); err != nil {
 		return err
@@ -795,7 +805,7 @@ usage:
   glim user ls | passwd <email> | rm <email>  manage dashboard accounts
   glim version
 
-config: ~/.glim/config.json (env: GLIM_DOMAIN, GLIM_PORT, GLIM_ROOT, GLIM_TTL, GLIM_SESSION_ID)
+config: ~/.glim/config.json (env: GLIM_DOMAIN, GLIM_PORT, GLIM_ROOT, GLIM_TTL, GLIM_LIVE_RELOAD, GLIM_SESSION_ID)
 `)
 }
 

@@ -21,7 +21,13 @@ type Config struct {
 	Port   int    `json:"port,omitempty"`
 	Root   string `json:"root,omitempty"`
 	TTL    string `json:"ttl,omitempty"`
+	// LiveReload makes open preview tabs refresh when the preview is
+	// republished under the same name. Nil means the default (on).
+	LiveReload *bool `json:"live_reload,omitempty"`
 }
+
+// LiveReloadEnabled reports whether live reload is on (the default).
+func (c Config) LiveReloadEnabled() bool { return c.LiveReload == nil || *c.LiveReload }
 
 func Path() string {
 	home, _ := os.UserHomeDir()
@@ -58,6 +64,9 @@ func Load() Config {
 			if f.TTL != "" {
 				c.TTL = f.TTL
 			}
+			if f.LiveReload != nil {
+				c.LiveReload = f.LiveReload
+			}
 		}
 	}
 	if v := firstEnv("GLIM_DOMAIN", "GLIM_BASE_URL"); v != "" {
@@ -76,6 +85,11 @@ func Load() Config {
 	}
 	if v := os.Getenv("GLIM_TTL"); v != "" {
 		c.TTL = v
+	}
+	if v := os.Getenv("GLIM_LIVE_RELOAD"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.LiveReload = &b
+		}
 	}
 	return c
 }

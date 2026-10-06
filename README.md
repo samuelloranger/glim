@@ -58,7 +58,7 @@ email and password, so do that before exposing the server. See
 ```
 glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr]  publish, print URL
 glim serve [--bind ADDR] [--port N] [--root DIR]                       run the preview server
-glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h]    show or set config
+glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h --live-reload true|false]  show or set config
 glim caddy                                                             print a reverse-proxy vhost
 glim ls | rm <name>... | gc                                           manage previews
 glim extend <name> <ttl> | pin <name>                                 change a preview's lifetime
@@ -73,7 +73,7 @@ glim version
 ## Config
 
 `~/.glim/config.json` (overridable by `GLIM_DOMAIN`, `GLIM_BIND`, `GLIM_PORT`,
-`GLIM_ROOT`, `GLIM_TTL`). A published preview lives under `root` until its TTL
+`GLIM_ROOT`, `GLIM_TTL`, `GLIM_LIVE_RELOAD`). A published preview lives under `root` until its TTL
 elapses; expired previews are pruned on the next command and by `glim gc`.
 
 ## Agent integration (MCP)

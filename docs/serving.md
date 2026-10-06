@@ -37,6 +37,24 @@ a fixed card served at `/_glim/og.png`. A tag the page already declares is never
 overridden or duplicated. Larger and non-HTML files are streamed unchanged, and
 `HEAD` and `Range` requests keep working.
 
+## Live reload
+
+Republishing a preview under the same name (`glim <file> --name X`, or an agent
+calling `present` with `name`) refreshes any open tab of that preview, and the
+dashboard thumbnails. glim inserts a small inline script before `</body>` of each
+served HTML page; it opens an `EventSource` to `/_glim/live/<slug>` and calls
+`location.reload()` when the stream reports `changed`. It is wrapped in an IIFE,
+reconnects with backoff, and stops after repeated failures or a `gone` event
+(the preview was removed or expired). The password unlock page never gets it.
+
+The stream endpoint is public, needs no cookie, and answers with
+`Access-Control-Allow-Origin: *` because previews run in an opaque origin. It
+only ever says `changed` or `gone` for a slug the client already knows, never
+content, so it does not need the preview unlocked. It sends a heartbeat comment
+every 25 seconds and allows at most 200 concurrent streams, 20 per client IP;
+beyond that it answers `429`. Turn the feature off with
+`glim config --live-reload=false` (config key `live_reload`).
+
 ## Password-protected previews
 
 A preview whose manifest has a `password_hash` (set with `glim <entry>
