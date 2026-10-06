@@ -67,6 +67,8 @@ func main() {
 		mustRun(cmdMCP())
 	case "install":
 		mustRun(cmdInstall(os.Args[2:]))
+	case "uninstall":
+		mustRun(cmdUninstall(os.Args[2:]))
 	case "user", "users":
 		mustRun(cmdUser(os.Args[2:]))
 	case "version", "--version", "-v":
@@ -588,23 +590,60 @@ func portOpen(port int) bool {
 }
 
 func cmdInstall(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: glim install <claude|codex|cursor>")
+	skill := false
+	var targets []string
+	for _, a := range args {
+		if a == "--skill" {
+			skill = true
+		} else {
+			targets = append(targets, a)
+		}
 	}
-	self, err := os.Executable()
+	if len(targets) != 1 {
+		return fmt.Errorf("usage: glim install [--skill] <claude|codex|cursor>")
+	}
+	d, err := installDeps()
 	if err != nil {
 		return err
 	}
-	steps, err := install.Install(args[0], install.Deps{
-		Home:       homeDir(),
-		GlimPath:   self,
-		HasCommand: func(name string) bool { _, e := exec.LookPath(name); return e == nil },
-		Run:        install.DefaultRun,
-	})
+	var steps []string
+	if skill {
+		steps, err = install.InstallSkill(targets[0], d)
+	} else {
+		steps, err = install.Install(targets[0], d)
+	}
 	for _, s := range steps {
 		fmt.Println("✓", s)
 	}
 	return err
+}
+
+func cmdUninstall(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: glim uninstall <claude|codex|cursor>")
+	}
+	d, err := installDeps()
+	if err != nil {
+		return err
+	}
+	steps, err := install.Uninstall(args[0], d)
+	for _, s := range steps {
+		fmt.Println("✓", s)
+	}
+	return err
+}
+
+func installDeps() (install.Deps, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return install.Deps{}, err
+	}
+	return install.Deps{
+		Home:       homeDir(),
+		GlimPath:   self,
+		HasCommand: func(name string) bool { _, e := exec.LookPath(name); return e == nil },
+		Run:        install.DefaultRun,
+	}, nil
 }
 
 var stdin = bufio.NewReader(os.Stdin)
@@ -801,7 +840,8 @@ usage:
                                               password-protect a preview
   glim open <name> | status                   open a link / show instance status
   glim mcp                                    run as MCP server
-  glim install <claude|codex|cursor>          wire into an agent
+  glim install [--skill] <claude|codex|cursor>  wire into an agent (--skill: SKILL.md only)
+  glim uninstall <claude|codex|cursor>        undo install
   glim user ls | passwd <email> | rm <email>  manage dashboard accounts
   glim version
 

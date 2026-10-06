@@ -126,6 +126,40 @@ func upsertBlock(path, begin, end, body string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
+// removeBlock deletes the managed block (markers included) from path, leaving
+// surrounding content intact without stacked blank lines. It reports whether
+// a block was removed.
+func removeBlock(path, begin, end string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	content := string(data)
+	b := strings.Index(content, begin)
+	if b == -1 {
+		return false, nil
+	}
+	e := strings.Index(content[b:], end)
+	if e == -1 {
+		return false, nil
+	}
+	before := strings.TrimRight(content[:b], "\n")
+	after := strings.TrimLeft(content[b+e+len(end):], "\n")
+	var out string
+	switch {
+	case before != "" && after != "":
+		out = before + "\n\n" + after
+	case before != "":
+		out = before + "\n"
+	default:
+		out = after
+	}
+	return true, os.WriteFile(path, []byte(out), 0o644)
+}
+
 func mergeCursorMCP(path, name, command string, args []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

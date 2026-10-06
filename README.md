@@ -65,7 +65,8 @@ glim extend <name> <ttl> | pin <name>                                 change a p
 glim <entry> --password | lock <name> | unlock <name>                 password-protect a preview
 glim open <name> | status                                             open a link / show status
 glim mcp                                                              run as an MCP server
-glim install <claude|codex|cursor>                                    wire into an agent
+glim install [--skill] <claude|codex|cursor>                          wire into an agent
+glim uninstall <claude|codex|cursor>                                  undo install
 glim user ls | passwd <email> | rm <email>                            manage dashboard accounts
 glim version
 ```
@@ -80,7 +81,9 @@ elapses; expired previews are pruned on the next command and by `glim gc`.
 
 `glim install <agent>` registers glim's MCP server (tools: `present`, `list`,
 `revoke`, `pin`, `extend`) and writes a steering rule so the agent prefers glim
-for previews. Supported: Claude, Codex, Cursor.
+for previews. Supported: Claude, Codex, Cursor. `glim install --skill <agent>`
+writes a `SKILL.md` instead (no MCP server), and `glim uninstall <agent>` removes
+either setup.
 
 ## Behind a reverse proxy
 
