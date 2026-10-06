@@ -90,6 +90,20 @@ func pinPreview(s *store.Store, in PinInput) (PinOutput, error) {
 	return PinOutput{Pinned: in.Name}, nil
 }
 
+// publishPreview validates the optional ttl (rejecting zero or negative
+// lifetimes) and publishes the preview.
+func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (store.PublishResult, error) {
+	ttl := defaultTTL
+	if in.TTL != "" {
+		d, err := store.ParseTTL(in.TTL)
+		if err != nil {
+			return store.PublishResult{}, err
+		}
+		ttl = d
+	}
+	return s.Publish(in.Path, in.Title, in.Project, "", ttl, in.Name)
+}
+
 type ExtendInput struct {
 	Name string `json:"name" jsonschema:"the preview slug to extend"`
 	TTL  string `json:"ttl" jsonschema:"new lifetime from now, e.g. 6h or 30m"`
@@ -101,9 +115,9 @@ type ExtendOutput struct {
 }
 
 func extendPreview(s *store.Store, in ExtendInput) (ExtendOutput, error) {
-	d, err := time.ParseDuration(in.TTL)
+	d, err := store.ParseTTL(in.TTL)
 	if err != nil {
-		return ExtendOutput{}, fmt.Errorf("bad ttl %q: %w", in.TTL, err)
+		return ExtendOutput{}, err
 	}
 	if err := s.Extend(in.Name, d); err != nil {
 		return ExtendOutput{}, err
@@ -125,15 +139,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	server := mcp.NewServer(&mcp.Implementation{Name: "glim", Version: version}, nil)
 
 	present := func(_ context.Context, _ *mcp.CallToolRequest, in PresentInput) (*mcp.CallToolResult, PresentOutput, error) {
-		ttl := defaultTTL
-		if in.TTL != "" {
-			d, err := time.ParseDuration(in.TTL)
-			if err != nil {
-				return nil, PresentOutput{}, fmt.Errorf("bad ttl %q: %w", in.TTL, err)
-			}
-			ttl = d
-		}
-		res, err := s.Publish(in.Path, in.Title, in.Project, "", ttl, in.Name)
+		res, err := publishPreview(s, defaultTTL, in)
 		if err != nil {
 			return nil, PresentOutput{}, err
 		}

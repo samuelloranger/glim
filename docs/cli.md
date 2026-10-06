@@ -24,7 +24,7 @@ Publishing is deliberately conservative so you cannot expose files by accident:
 | --- | --- |
 | `--title` | Human title; becomes the readable slug. Defaults to the filename. |
 | `--project` | Stored as metadata, shown in `glim ls`. |
-| `--ttl` | Lifetime, e.g. `6h`, `30m`. Defaults to the configured TTL. |
+| `--ttl` | Lifetime, e.g. `6h`, `30m`; must be greater than zero. Defaults to the configured TTL. |
 | `--name` | Reuse this exact slug to update in place at the same URL (created if absent). Omit for a fresh random link. |
 | `--local` | Auto-start the built-in server and return a loopback link. |
 | `--qr` | Also print a scannable QR code of the URL (to stderr, so stdout stays the plain URL). |
@@ -92,7 +92,7 @@ glim pin <name>            # never expire until removed
 ```
 
 `pin` exempts a preview from TTL expiry and garbage collection; `glim ls` shows
-it as `pinned`. `extend` resets the expiry to `now + ttl`.
+it as `pinned`. `extend` resets the expiry to `now + ttl`. A zero or negative ttl is rejected, so a preview is never created already expired.
 
 ## open
 

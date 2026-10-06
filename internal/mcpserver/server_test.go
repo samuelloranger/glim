@@ -129,3 +129,35 @@ func TestExtendPreview(t *testing.T) {
 		t.Fatal("want error extending missing preview")
 	}
 }
+
+func TestPresentRejectsNonPositiveTTL(t *testing.T) {
+	s := newTestStore(t)
+	p := filepath.Join(t.TempDir(), "page.html")
+	if err := os.WriteFile(p, []byte("<h1>hi</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, ttl := range []string{"0s", "-1h", "bogus"} {
+		if _, err := publishPreview(s, time.Hour, PresentInput{Path: p, TTL: ttl}); err == nil {
+			t.Errorf("present ttl %q should fail", ttl)
+		}
+	}
+	if list, _ := s.List(); len(list) != 0 {
+		t.Errorf("rejected ttl must not create previews, got %d", len(list))
+	}
+	if _, err := publishPreview(s, time.Hour, PresentInput{Path: p, TTL: "30m"}); err != nil {
+		t.Errorf("valid ttl failed: %v", err)
+	}
+}
+
+func TestExtendRejectsNonPositiveTTL(t *testing.T) {
+	s := newTestStore(t)
+	name := publish(t, s, "T", "", time.Hour)
+	for _, ttl := range []string{"0s", "-1h"} {
+		if _, err := extendPreview(s, ExtendInput{Name: name, TTL: ttl}); err == nil {
+			t.Errorf("extend ttl %q should fail", ttl)
+		}
+	}
+	if _, err := extendPreview(s, ExtendInput{Name: name, TTL: "2h"}); err != nil {
+		t.Errorf("valid extend failed: %v", err)
+	}
+}
