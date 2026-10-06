@@ -121,6 +121,19 @@ func (db *DB) IsOwnerToken(v string) bool {
 	return hmac.Equal([]byte(mac), []byte(ownerMAC(key, uid)))
 }
 
+// UnlockToken is the value of a preview's unlock cookie: an HMAC under the
+// server secret of the slug and its current password hash, so changing or
+// removing the password invalidates every earlier unlock.
+func (db *DB) UnlockToken(slug, passwordHash string) string {
+	key, err := db.ownerKey()
+	if err != nil || len(key) == 0 {
+		return ""
+	}
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte("unlock\x00" + slug + "\x00" + passwordHash))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
 // --- asynchronous recording ---
 
 // ViewRecorder writes view counts from a background goroutine so serving a

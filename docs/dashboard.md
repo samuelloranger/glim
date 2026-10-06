@@ -6,6 +6,9 @@ pin or remove a preview, and copy its link. Changes made elsewhere, such as a
 new publish from the CLI or an agent, or a preview expiring, show up within
 about two seconds without a reload.
 
+Password-protected previews carry a `locked` badge next to their title (the API's
+`locked` field). Their thumbnail shows the unlock form.
+
 ## Seen indicator
 
 Each card shows whether the link has been opened: `seen 3× · 5m ago`, or `not

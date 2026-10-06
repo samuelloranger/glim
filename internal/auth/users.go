@@ -73,6 +73,25 @@ func (db *DB) hash(p string) (string, error) {
 	return string(b), err
 }
 
+// HashPassword validates p (length rules as for accounts) and returns its
+// bcrypt hash, for secrets that are not tied to a DB such as preview locks.
+func HashPassword(p string) (string, error) {
+	if err := ValidatePassword(p); err != nil {
+		return "", err
+	}
+	b, err := bcrypt.GenerateFromPassword([]byte(p), DefaultBcryptCost)
+	return string(b), err
+}
+
+// CheckPassword reports whether p matches a bcrypt hash. Over-long input never
+// matches rather than being truncated.
+func CheckPassword(hash, p string) bool {
+	if len(p) > MaxPasswordBytes {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(p)) == nil
+}
+
 var (
 	dummyOnce sync.Once
 	dummyHash []byte

@@ -21,6 +21,7 @@ const base: Preview = {
   created: "2026-01-01T00:00:00Z",
   expires: "2026-01-01T06:00:00Z",
   pinned: false,
+  locked: false,
   views: 0,
   lastSeen: null,
   url: "https://glim.example.com/diff-a1b2/",

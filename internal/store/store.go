@@ -59,6 +59,7 @@ type PublishResult struct {
 	Name    string
 	URL     string
 	Expires time.Time
+	Locked  bool
 }
 
 // AllowedFileExts is the single place that decides which single-file entries
@@ -93,6 +94,12 @@ func extAllowed(name string) bool {
 }
 
 func (s *Store) Publish(entry, title, project, session string, ttl time.Duration, name string) (PublishResult, error) {
+	return s.PublishLocked(entry, title, project, session, ttl, name, "")
+}
+
+// PublishLocked is Publish with an optional bcrypt passwordHash. An empty hash
+// keeps whatever lock the preview already has when it is republished in place.
+func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Duration, name, passwordHash string) (PublishResult, error) {
 	abs, err := filepath.Abs(entry)
 	if err != nil {
 		return PublishResult{}, err
@@ -174,6 +181,12 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 		Created: created,
 		Expires: created.Add(ttl),
 	}
+	m.PasswordHash = passwordHash
+	if passwordHash == "" {
+		if old, err := readManifest(filepath.Join(s.Root, name)); err == nil {
+			m.PasswordHash = old.PasswordHash
+		}
+	}
 	if err := writeManifest(tmp, m); err != nil {
 		return PublishResult{}, err
 	}
@@ -203,7 +216,7 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 
 	_, _ = s.GC()
 
-	return PublishResult{Name: name, URL: s.url(name), Expires: m.Expires}, nil
+	return PublishResult{Name: name, URL: s.url(name), Expires: m.Expires, Locked: m.Locked()}, nil
 }
 
 // publishConverted renders a non-HTML file into tmp/index.html and keeps the
@@ -319,6 +332,21 @@ func (s *Store) Pin(name string) error {
 		return fmt.Errorf("no such preview: %s", name)
 	}
 	m.Pinned = true
+	return writeManifest(dir, m)
+}
+
+// SetPasswordHash locks the named preview behind a bcrypt hash, or unlocks it
+// when hash is empty.
+func (s *Store) SetPasswordHash(name, hash string) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	dir := filepath.Join(s.Root, name)
+	m, err := readManifest(dir)
+	if err != nil {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	m.PasswordHash = hash
 	return writeManifest(dir, m)
 }
 

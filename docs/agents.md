@@ -30,7 +30,7 @@ them in place instead of duplicating.
 ## The present tool
 
 ```
-present(path, title?, project?, ttl?, name?) → { url, name, expires }
+present(path, title?, project?, ttl?, name?, password?) → { url, name, expires, locked? }
 ```
 
 The agent writes a self-contained HTML file or directory, calls `present`, and
@@ -42,6 +42,13 @@ passes `name` set to the slug a previous `present` returned. The preview is
 replaced in place (stale files removed, expiry reset), so a link already shared
 keeps working with fresh contents. Omitting `name` gives a new random slug, as
 before. `name` accepts lowercase letters, digits and single hyphens only.
+
+To protect a preview, the agent passes `password` (8 to 72 bytes). Visitors then
+need that password to see anything; glim stores only a bcrypt hash. When an agent
+republishes with `name` and omits `password`, the existing password is kept.
+`list` reports `locked: true` for protected previews. Since the password is
+tool input, it passes through the agent's context; use the `glim lock` command
+yourself if you would rather the agent never sees it.
 
 ## Why a rule as well as a tool
 

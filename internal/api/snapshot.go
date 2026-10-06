@@ -15,7 +15,9 @@ type Preview struct {
 	Created time.Time `json:"created"`
 	Expires time.Time `json:"expires"`
 	Pinned  bool      `json:"pinned"`
-	URL     string    `json:"url"`
+	// Locked is true when the preview needs a password to open.
+	Locked bool   `json:"locked"`
+	URL    string `json:"url"`
 	// Views counts real page opens; LastSeen is the latest one, null if never.
 	Views    int64      `json:"views"`
 	LastSeen *time.Time `json:"lastSeen"`
@@ -36,7 +38,7 @@ type Snapshot struct {
 
 func toPreview(st *store.Store, m store.Manifest, v auth.ViewStat) Preview {
 	p := Preview{Name: m.Name, Title: m.Title, Project: m.Project, Created: m.Created,
-		Expires: m.Expires, Pinned: m.Pinned, URL: st.URL(m.Name), Views: v.Count}
+		Expires: m.Expires, Pinned: m.Pinned, Locked: m.Locked(), URL: st.URL(m.Name), Views: v.Count}
 	if v.Count > 0 {
 		t := v.LastSeen
 		p.LastSeen = &t

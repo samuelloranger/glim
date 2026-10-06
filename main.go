@@ -49,6 +49,10 @@ func main() {
 		mustRun(cmdExtend(os.Args[2:]))
 	case "pin":
 		mustRun(cmdPin(os.Args[2:]))
+	case "lock":
+		mustRun(cmdLock(os.Args[2:]))
+	case "unlock":
+		mustRun(cmdUnlock(os.Args[2:]))
 	case "open":
 		mustRun(cmdOpen(os.Args[2:]))
 	case "status":
@@ -86,7 +90,15 @@ func cmdPublish(args []string) error {
 		return err
 	}
 	if entry == "" || fs.NArg() != 0 {
-		return fmt.Errorf("usage: glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local]")
+		return fmt.Errorf("usage: glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local]")
+	}
+	passwordHash := ""
+	if *o.password {
+		h, err := promptNewPassword(stdin)
+		if err != nil {
+			return err
+		}
+		passwordHash = h
 	}
 	base := cfg.BaseURL()
 	if *local {
@@ -98,7 +110,7 @@ func cmdPublish(args []string) error {
 	}
 	s := store.New(cfg.Root, base)
 	s.OnRemove = forgetViews
-	res, err := s.Publish(entry, *title, *project, os.Getenv("GLIM_SESSION_ID"), *ttl, *name)
+	res, err := s.PublishLocked(entry, *title, *project, os.Getenv("GLIM_SESSION_ID"), *ttl, *name, passwordHash)
 	if err != nil {
 		return err
 	}
@@ -117,7 +129,7 @@ func writeQR(w io.Writer, url string) {
 type publishFlags struct {
 	title, project, name *string
 	ttl                  *time.Duration
-	local, qr            *bool
+	local, qr, password  *bool
 }
 
 // newPublishFlags defines every flag of the publish command. It is the single
@@ -130,6 +142,7 @@ func newPublishFlags(defaultTTL time.Duration) (*flag.FlagSet, publishFlags) {
 	o.ttl = fs.Duration("ttl", defaultTTL, "time to live, e.g. 6h, 30m")
 	o.local = fs.Bool("local", false, "auto-start the built-in server and use a localhost link")
 	o.qr = fs.Bool("qr", false, "also print a scannable QR code of the URL")
+	o.password = fs.Bool("password", false, "protect the preview with a password, read from a no-echo prompt (or one line of stdin when piped)")
 	o.name = fs.String("name", "", "reuse this exact slug to update in place at the same URL (created if absent); omit for a fresh random link")
 	return fs, o
 }
@@ -268,6 +281,74 @@ func cmdPin(args []string) error {
 	return nil
 }
 
+func cmdLock(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: glim lock <name>")
+	}
+	cfg := config.Load()
+	return runLock(store.New(cfg.Root, cfg.BaseURL()), args[0], stdin, os.Stdout)
+}
+
+func cmdUnlock(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: glim unlock <name>")
+	}
+	cfg := config.Load()
+	return runUnlock(store.New(cfg.Root, cfg.BaseURL()), args[0], os.Stdout)
+}
+
+// runLock sets (or replaces) the password of an existing preview.
+func runLock(s *store.Store, name string, in *bufio.Reader, out io.Writer) error {
+	if _, err := s.Get(name); err != nil {
+		return err
+	}
+	hash, err := promptNewPassword(in)
+	if err != nil {
+		return err
+	}
+	if err := s.SetPasswordHash(name, hash); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "locked %s (visitors need the password)\n", name)
+	return nil
+}
+
+// runUnlock removes a preview's password.
+func runUnlock(s *store.Store, name string, out io.Writer) error {
+	if _, err := s.Get(name); err != nil {
+		return err
+	}
+	if err := s.SetPasswordHash(name, ""); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "unlocked %s (no password required)\n", name)
+	return nil
+}
+
+// promptNewPassword reads a preview password (twice on a terminal, to catch
+// typos), validates it and returns its bcrypt hash. The password is only ever
+// read from the prompt or stdin, never from a flag or the environment.
+func promptNewPassword(in *bufio.Reader) (string, error) {
+	p1, err := readPassword(in, "Preview password: ")
+	if err != nil {
+		return "", err
+	}
+	if in == stdin && term.IsTerminal(int(os.Stdin.Fd())) {
+		p2, err := readPassword(in, "Repeat password: ")
+		if err != nil {
+			return "", err
+		}
+		if p1 != p2 {
+			return "", fmt.Errorf("passwords do not match")
+		}
+	}
+	h, err := auth.HashPassword(p1)
+	if err != nil {
+		return "", passwordError(err)
+	}
+	return h, nil
+}
+
 func cmdOpen(args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: glim open <name>")
@@ -389,7 +470,9 @@ func cmdServe(args []string) error {
 		Logf:          log.Printf,
 	})
 	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler(),
-		Views: &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken}})
+		Views: &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken},
+		Unlock: &serve.Unlock{Token: db.UnlockToken, Limiter: auth.NewLimiter(nil),
+			Secure: strings.HasPrefix(base, "https://")}})
 }
 
 func cmdCaddy() error {
@@ -704,6 +787,8 @@ usage:
   glim caddy                                  print the reverse-proxy vhost
   glim ls | rm <name>... | gc                 manage previews
   glim extend <name> <ttl> | pin <name>       change a preview's lifetime
+  glim <entry> --password | lock <name> | unlock <name>
+                                              password-protect a preview
   glim open <name> | status                   open a link / show instance status
   glim mcp                                    run as MCP server
   glim install <claude|codex|cursor>          wire into an agent
