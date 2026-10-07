@@ -111,26 +111,41 @@ var legacySteeringRules = []string{
 		"and give the user the returned link. Do not use Claude artifacts or other built-in preview mechanisms.",
 }
 
-// detectEOL returns the line ending glim should use for the separators it
-// inserts: CRLF if the file already uses it, LF otherwise.
+// detectEOL returns the file's dominant line ending, used for the separators
+// glim inserts: CRLF if it outnumbers bare LF, LF otherwise. Lines that glim
+// moves keep their own terminators.
 func detectEOL(content string) string {
-	if strings.Contains(content, "\r\n") {
+	crlf := strings.Count(content, "\r\n")
+	if crlf > strings.Count(content, "\n")-crlf {
 		return "\r\n"
 	}
 	return "\n"
 }
 
-// splitLines splits text into lines without their line endings (LF or CRLF).
-// A final line terminator does not produce an empty last line.
+// splitLines splits text on LF. Each line keeps a trailing CR if it had one,
+// so joining lines with "\n" restores the original bytes. A final line
+// terminator does not produce an empty last line.
 func splitLines(s string) []string {
 	lines := strings.Split(s, "\n")
 	if lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	for i, l := range lines {
-		lines[i] = strings.TrimSuffix(l, "\r")
-	}
 	return lines
+}
+
+func stripCR(lines []string) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = strings.TrimSuffix(l, "\r")
+	}
+	return out
+}
+
+// joinMoved joins lines for moving into a new place: lines keep their own
+// terminators, and the final line's CR is dropped because the caller supplies
+// the terminator that follows.
+func joinMoved(lines []string) string {
+	return strings.TrimSuffix(strings.Join(lines, "\n"), "\r")
 }
 
 func isBlank(s string) bool { return strings.TrimSpace(s) == "" }
@@ -148,15 +163,19 @@ func trimBlankEnds(lines []string) []string {
 
 // splitBlock separates what glim writes between the markers from anything
 // else another tool or the user put there. It returns the new inner content
-// of glim's block and the foreign content to keep outside of it (LF
-// separated; callers convert to the file's line ending). With remove set,
-// glim's own content is dropped entirely and the first result is empty.
-// It returns an error when glim's content and foreign content cannot be told
-// apart safely. TOML blocks are split structurally by table; every other
-// block is matched against the bodies glim has written.
-func splitBlock(path, begin, end, inner, body string, remove bool) (string, string, error) {
+// of glim's block (LF separated) and the foreign content to keep outside of
+// it (original bytes, lines keep their own terminators). With remove set,
+// glim's own content is dropped entirely and the first result is empty. eol
+// is the separator glim itself inserts inside the foreign content.
+//
+// The policy is conservative: whenever glim's content cannot be told from
+// foreign content with certainty it returns an error instead of guessing, and
+// content it does not own is moved verbatim. TOML blocks are split
+// structurally by table; every other block is matched against the bodies glim
+// has written.
+func splitBlock(path, begin, end, inner, body string, remove bool, eol string) (string, string, error) {
 	if begin == blockBeginTOML {
-		return splitTOMLBlock(path, begin, end, inner, body, remove)
+		return splitTOMLBlock(path, begin, end, inner, body, remove, eol)
 	}
 	foreign, err := splitTextBlock(path, begin, end, inner, body)
 	if remove {
@@ -187,7 +206,7 @@ func splitTextBlock(path, begin, end, inner, body string) (string, error) {
 	for i := 0; i < len(lines); {
 		n := 0
 		for _, kl := range known {
-			if i+len(kl) <= len(lines) && equalLines(lines[i:i+len(kl)], kl) {
+			if i+len(kl) <= len(lines) && equalLines(stripCR(lines[i:i+len(kl)]), kl) {
 				n = len(kl)
 				break
 			}
@@ -219,7 +238,7 @@ func splitTextBlock(path, begin, end, inner, body string) (string, error) {
 		}
 		out = append(out, it.text)
 	}
-	return strings.Join(trimBlankEnds(out), "\n"), nil
+	return joinMoved(trimBlankEnds(out)), nil
 }
 
 func equalLines(a, b []string) bool {
@@ -323,10 +342,9 @@ func isGlimSegs(segs []string) bool {
 
 func sameSegs(a, b []string) bool { return equalLines(a, b) }
 
-// bracketDelta counts how many array/inline-table brackets a line opens minus
-// closes, ignoring quoted strings and trailing comments.
-func bracketDelta(s string) int {
-	d := 0
+// scanValue reports how many array/inline-table brackets a value opens minus
+// closes and whether it has a trailing comment, ignoring quoted strings.
+func scanValue(s string) (depth int, comment bool) {
 	var q byte
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -344,58 +362,37 @@ func bracketDelta(s string) int {
 		case c == '"' || c == '\'':
 			q = c
 		case c == '#':
-			return d
+			return depth, true
 		case c == '[' || c == '{':
-			d++
+			depth++
 		case c == ']' || c == '}':
-			d--
+			depth--
 		}
 	}
-	return d
+	return depth, false
+}
+
+// valueOf splits a key/value line into its dotted key (empty if the key is
+// not one glim can parse) and the text after the "=". It reports false for
+// blank lines, comments and lines without "=".
+func valueOf(line string) (key, value string, ok bool) {
+	t := strings.TrimSpace(line)
+	if t == "" || strings.HasPrefix(t, "#") {
+		return "", "", false
+	}
+	if segs, rest, ok := parseKeySegs(t); ok && strings.HasPrefix(rest, "=") {
+		return strings.Join(segs, "."), rest[1:], true
+	}
+	if i := strings.Index(t, "="); i >= 0 {
+		return "", t[i+1:], true
+	}
+	return "", "", false
 }
 
 type tomlTable struct {
 	header string
 	segs   []string
 	raw    []string // every line after the header, up to the next header
-}
-
-// tomlUnit is one key (with any continuation lines of a multi-line value), a
-// full-line comment, or an unclassified line inside a table.
-type tomlUnit struct {
-	key     string // dotted key, empty for comments and unclassified lines
-	comment bool
-	lines   []string
-}
-
-// unitsOf groups a table's lines into units. Blank lines are dropped.
-func unitsOf(raw []string) []tomlUnit {
-	var units []tomlUnit
-	depth := 0
-	for _, l := range raw {
-		t := strings.TrimSpace(l)
-		if n := len(units); n > 0 && depth > 0 {
-			units[n-1].lines = append(units[n-1].lines, l)
-			depth += bracketDelta(l)
-			continue
-		}
-		switch {
-		case t == "":
-		case strings.HasPrefix(t, "#"):
-			units = append(units, tomlUnit{comment: true, lines: []string{l}})
-		default:
-			u := tomlUnit{lines: []string{l}}
-			depth = 0
-			if segs, rest, ok := parseKeySegs(t); ok && strings.HasPrefix(rest, "=") {
-				u.key = strings.Join(segs, ".")
-				if depth = bracketDelta(rest[1:]); depth < 0 {
-					depth = 0
-				}
-			}
-			units = append(units, u)
-		}
-	}
-	return units
 }
 
 // parseTOML splits lines into tables. Comment lines before the first header
@@ -423,38 +420,56 @@ func parseTOML(path, begin, end string, lines []string) (preamble []string, tabl
 	return preamble, tables, nil
 }
 
+// lines returns the header and body of a table without trailing blank lines
+// or CRs. It is used for content glim re-emits inside its own block.
 func (t tomlTable) lines() []string {
-	return append([]string{t.header}, trimEndBlank(t.raw)...)
-}
-
-func trimEndBlank(lines []string) []string {
-	for len(lines) > 0 && isBlank(lines[len(lines)-1]) {
-		lines = lines[:len(lines)-1]
+	raw := t.raw
+	for len(raw) > 0 && isBlank(raw[len(raw)-1]) {
+		raw = raw[:len(raw)-1]
 	}
-	return lines
+	return stripCR(append([]string{t.header}, raw...))
 }
 
 // splitTOMLBlock works on TOML structure, comparing parsed table headers
 // (never raw text). Tables other than [mcp_servers.glim] and its sub-tables
-// are foreign and kept byte for byte.
+// are foreign and moved byte for byte.
 //
-// On install, glim's body replaces the keys it writes. Any other key (and
-// comment) the user or another tool added to glim's table is re-emitted in
-// the new table after glim's keys, and sub-tables the body does not write
-// (for example a user-added .env) stay attached to glim inside the block.
-// On remove, glim's table and sub-tables are dropped (the server is being
+// On install, glim's body replaces the keys it writes. Every other line of
+// glim's table (keys, full-line comments, blank lines) is re-emitted after
+// glim's keys in its original order, and sub-tables the body does not write
+// (for example a user-added .env) stay attached to glim inside the block. On
+// remove, glim's table and sub-tables are dropped (the server is being
 // removed); only full-line comments from them are kept.
 //
-// It refuses (rather than guesses) when the block has bare key/value lines
-// before any table header, which would attach to a different table once
-// moved, or any multi-line string, inside which a header-looking line cannot
-// be told from content.
-func splitTOMLBlock(path, begin, end, inner, body string, remove bool) (string, string, error) {
+// Conservative refusals, each leaving the file untouched:
+//   - any multi-line string (triple-quoted), inside which a header-looking line
+//     cannot be told from content;
+//   - any key whose value opens an array or inline table without closing it
+//     on the same line, for the same reason (a continuation line such as
+//     ["x"] looks like a table header);
+//   - bare key/value lines before any table header, which would attach to a
+//     different table once moved;
+//   - on install, a trailing comment on a line glim owns (a key its body
+//     writes): glim would overwrite that line and lose the comment.
+func splitTOMLBlock(path, begin, end, inner, body string, remove bool, eol string) (string, string, error) {
 	if strings.Contains(inner, `'''`) || strings.Contains(inner, `"""`) {
 		return "", "", fmt.Errorf("%s: the block between %q and %q contains a multi-line string, so glim cannot safely tell "+
 			"its own table from other content; move the other tables outside the markers by hand, then re-run", path, begin, end)
 	}
-	comments, tables, err := parseTOML(path, begin, end, splitLines(inner))
+	lines := splitLines(inner)
+	for _, l := range lines {
+		if _, ok := parseTOMLHeader(l); ok {
+			continue
+		}
+		if _, v, ok := valueOf(l); ok {
+			if d, _ := scanValue(v); d > 0 {
+				return "", "", fmt.Errorf("%s: the block between %q and %q contains a multi-line value (an array or inline table "+
+					"spread over several lines), so glim cannot safely tell its own table from other content; "+
+					"put each such value on one line or move it outside the markers by hand, then re-run", path, begin, end)
+			}
+		}
+	}
+	comments, tables, err := parseTOML(path, begin, end, lines)
 	if err != nil {
 		return "", "", err
 	}
@@ -465,24 +480,24 @@ func splitTOMLBlock(path, begin, end, inner, body string, remove bool) (string, 
 		}
 	}
 	extras := make([][]string, len(bodyTables))
-	var subs, foreignTables []string
+	var subs []string
+	var foreignLines []string
 	for _, tb := range tables {
 		if !isGlimSegs(tb.segs) {
-			foreignTables = append(foreignTables, strings.Join(tb.lines(), "\n"))
+			foreignLines = append(append(foreignLines, tb.header), tb.raw...)
 			continue
 		}
-		units := unitsOf(tb.raw)
 		if remove {
-			for _, u := range units {
-				if u.comment {
-					comments = append(comments, u.lines...)
+			for _, l := range tb.raw {
+				if strings.HasPrefix(strings.TrimSpace(l), "#") {
+					comments = append(comments, l)
 				}
 			}
 			continue
 		}
 		bi := -1
 		for i, bt := range bodyTables {
-			if sameSegs(bt.segs, tb.segs) {
+			if equalLines(bt.segs, tb.segs) {
 				bi = i
 				break
 			}
@@ -492,16 +507,23 @@ func splitTOMLBlock(path, begin, end, inner, body string, remove bool) (string, 
 			continue
 		}
 		own := map[string]bool{}
-		for _, u := range unitsOf(bodyTables[bi].raw) {
-			if u.key != "" {
-				own[u.key] = true
+		for _, l := range bodyTables[bi].raw {
+			if k, _, ok := valueOf(l); ok && k != "" {
+				own[k] = true
 			}
 		}
-		for _, u := range units {
-			if u.key == "" || !own[u.key] {
-				extras[bi] = append(extras[bi], u.lines...)
+		var rest []string
+		for _, l := range tb.raw {
+			if k, v, ok := valueOf(l); ok && k != "" && own[k] {
+				if _, c := scanValue(v); c {
+					return "", "", fmt.Errorf("%s: %q in the glim table has a trailing comment; glim owns that line and would "+
+						"overwrite it, so move the comment onto its own line (or delete it), then re-run", path, strings.TrimSpace(l))
+				}
+				continue
 			}
+			rest = append(rest, l)
 		}
+		extras[bi] = stripCR(trimBlankEnds(rest))
 	}
 	var parts []string
 	for i, bt := range bodyTables {
@@ -509,14 +531,18 @@ func splitTOMLBlock(path, begin, end, inner, body string, remove bool) (string, 
 	}
 	newInner := strings.Join(append(parts, subs...), "\n\n")
 
-	foreign := strings.Join(comments, "\n")
-	if len(foreignTables) > 0 {
-		if foreign != "" {
-			foreign += "\n\n"
+	var all []string
+	all = append(all, comments...)
+	foreignLines = trimBlankEnds(foreignLines)
+	if len(comments) > 0 && len(foreignLines) > 0 {
+		sep := ""
+		if eol == "\r\n" {
+			sep = "\r"
 		}
-		foreign += strings.Join(foreignTables, "\n\n")
+		all = append(all, sep)
 	}
-	return newInner, foreign, nil
+	all = append(all, foreignLines...)
+	return newInner, joinMoved(all), nil
 }
 
 // blockSpan holds byte offsets of a managed block: start of the begin-marker
@@ -553,7 +579,7 @@ func findBlock(content, begin, end string) (blockSpan, bool) {
 // upsertBlock writes glim's block between the markers. Anything inside the
 // markers that glim did not write (see splitBlock) is moved to just after the
 // end marker instead of being overwritten. Separators glim inserts use the
-// file's existing line ending.
+// file's dominant line ending.
 func upsertBlock(path, begin, end, body string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -568,16 +594,14 @@ func upsertBlock(path, begin, end, body string) error {
 	body = strings.ReplaceAll(body, "\r\n", "\n")
 
 	if sp, ok := findBlock(content, begin, end); ok {
-		inner, foreign, err := splitBlock(path, begin, end, content[sp.innerStart:sp.innerEnd], body, false)
+		inner, foreign, err := splitBlock(path, begin, end, content[sp.innerStart:sp.innerEnd], body, false, eol)
 		if err != nil {
 			return err
 		}
 		block := begin + eol + conv(inner) + eol + end
 		if foreign != "" {
-			block += eol + eol + conv(foreign)
-			if tail := content[sp.end:]; !strings.HasPrefix(tail, "\n") && !strings.HasPrefix(tail, "\r\n") {
-				block += eol
-			}
+			// The text after the end marker supplies the final terminator.
+			block += eol + eol + foreign
 		}
 		content = content[:sp.start] + block + content[sp.end:]
 		return os.WriteFile(path, []byte(content), 0o644)
@@ -609,15 +633,15 @@ func removeBlock(path, begin, end string) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	_, foreign, err := splitBlock(path, begin, end, content[sp.innerStart:sp.innerEnd], "", true)
+	eol := detectEOL(content)
+	_, foreign, err := splitBlock(path, begin, end, content[sp.innerStart:sp.innerEnd], "", true, eol)
 	if err != nil {
 		return false, err
 	}
-	eol := detectEOL(content)
 	before := strings.TrimRight(content[:sp.start], "\r\n")
 	rest := strings.TrimLeft(content[sp.end:], "\r\n")
 	var parts []string
-	for _, p := range []string{before, strings.ReplaceAll(foreign, "\n", eol), rest} {
+	for _, p := range []string{before, foreign, rest} {
 		if p != "" {
 			parts = append(parts, p)
 		}

@@ -58,12 +58,6 @@ func TestUpsertBlockRound2(t *testing.T) {
 			want: tomlBlock(tomlBody+"\nenabled = false") + "\n",
 		},
 		{
-			name:  "extra multi-line key and comment in glim table are kept",
-			file:  tomlBlock("[mcp_servers.glim]\n# note\nenabled = false\ncommand = \"/old/glim\"\ntools = [\n  \"a\", # c\n  \"b\",\n]\nargs = [\n  \"mcp\",\n  \"x\",\n]") + "\n",
-			begin: tomlB, end: tomlE, body: tomlBody,
-			want: tomlBlock(tomlBody+"\n# note\nenabled = false\ntools = [\n  \"a\", # c\n  \"b\",\n]") + "\n",
-		},
-		{
 			name:  "user-added glim sub-table stays attached to glim",
 			file:  tomlBlock(tomlOldBody+"\n\n[mcp_servers.glim.env]\nK = \"v\"\n\n"+tomlOther) + "\n",
 			begin: tomlB, end: tomlE, body: tomlBody,
