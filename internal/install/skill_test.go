@@ -60,7 +60,7 @@ func TestInstallSkillWritesAndOverwrites(t *testing.T) {
 func TestRemoveBlock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "f.md")
 	os.WriteFile(path, []byte("top\n\nbottom\n"), 0o644)
-	if err := upsertBlock(path, blockBeginMD, blockEndMD, "RULE"); err != nil {
+	if err := upsertBlock(path, blockBeginMD, blockEndMD, SteeringRule); err != nil {
 		t.Fatal(err)
 	}
 	ok, err := removeBlock(path, blockBeginMD, blockEndMD)
@@ -74,7 +74,7 @@ func TestRemoveBlock(t *testing.T) {
 	if ok, _ := removeBlock(path, blockBeginMD, blockEndMD); ok {
 		t.Fatal("second removal should be a no-op")
 	}
-	os.WriteFile(path, []byte("a\n\n"+blockBeginMD+"\nX\n"+blockEndMD+"\n\nb\n"), 0o644)
+	os.WriteFile(path, []byte("a\n\n"+blockBeginMD+"\n"+SteeringRule+"\n"+blockEndMD+"\n\nb\n"), 0o644)
 	removeBlock(path, blockBeginMD, blockEndMD)
 	got, _ = os.ReadFile(path)
 	if string(got) != "a\n\nb\n" {

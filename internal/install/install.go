@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -102,6 +103,141 @@ func installCursor(d Deps) ([]string, error) {
 	return steps, nil
 }
 
+// legacySteeringRules are earlier wordings of SteeringRule that glim wrote
+// into managed blocks. They are recognised as glim's own content so an
+// upgrade replaces them instead of treating them as foreign text.
+var legacySteeringRules = []string{
+	"To show the user any HTML or visual preview, call the glim `present` MCP tool " +
+		"and give the user the returned link. Do not use Claude artifacts or other built-in preview mechanisms.",
+}
+
+// splitBlock separates what glim wrote between the markers from anything
+// else another tool or the user put there. It returns the foreign content
+// verbatim (own content removed, no surrounding blank lines) or an error when
+// the two cannot be told apart safely. TOML blocks are split structurally by
+// table; every other block is matched against the bodies glim has written.
+func splitBlock(path, begin, end, inner, body string) (string, error) {
+	if begin == blockBeginTOML {
+		return splitTOMLBlock(path, begin, end, inner)
+	}
+	return splitTextBlock(path, begin, end, inner, body)
+}
+
+// splitTextBlock treats the current body and the known legacy rules as glim's
+// own content. Everything else is foreign. If the block holds text but none of
+// those bodies, an older glim rule cannot be told from foreign text, so it
+// refuses rather than guess.
+func splitTextBlock(path, begin, end, inner, body string) (string, error) {
+	if strings.TrimSpace(inner) == "" {
+		return "", nil
+	}
+	const mark = "\x00"
+	known := append([]string{body, SteeringRule}, legacySteeringRules...)
+	found := false
+	for _, k := range known {
+		if k != "" && strings.Contains(inner, k) {
+			found = true
+			inner = strings.ReplaceAll(inner, k, mark)
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("%s: the block between %q and %q has content glim does not recognise; "+
+			"move or delete those lines by hand (keep anything you want outside the markers), then re-run", path, begin, end)
+	}
+	var parts []string
+	for _, p := range strings.Split(inner, mark) {
+		if p = strings.Trim(p, "\r\n"); strings.TrimSpace(p) != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, "\n"), nil
+}
+
+var tomlHeader = regexp.MustCompile(`^\s*\[\[?[^\[\],]+\]\]?\s*(#.*)?$`)
+
+// isGlimTOMLHeader reports whether a table header line names the
+// mcp_servers.glim table or one of its sub-tables.
+func isGlimTOMLHeader(line string) bool {
+	h := strings.TrimSpace(line)
+	if i := strings.Index(h, "]"); i != -1 {
+		h = h[:i]
+	}
+	h = strings.NewReplacer("[", "", "\"", "", "'", "", " ", "", "\t", "").Replace(h)
+	return h == "mcp_servers.glim" || strings.HasPrefix(h, "mcp_servers.glim.")
+}
+
+// splitTOMLBlock treats the [mcp_servers.glim] table and its sub-tables as
+// glim's own content and every other table as foreign, kept byte for byte.
+// Full-line comments inside glim's tables are kept as foreign (glim writes
+// none). Bare key/value lines before the first table header are refused: once
+// moved they would silently attach to a different table.
+func splitTOMLBlock(path, begin, end, inner string) (string, error) {
+	var tables []string // foreign tables, each starting at its header
+	var cur []string
+	var comments []string // comments from the preamble and from glim's tables
+	curGlim, started := false, false
+	flush := func() {
+		if started && !curGlim {
+			tables = append(tables, strings.Trim(strings.Join(cur, "\n"), "\r\n"))
+		}
+		cur = nil
+	}
+	for _, line := range strings.Split(inner, "\n") {
+		if tomlHeader.MatchString(line) {
+			flush()
+			started, curGlim = true, isGlimTOMLHeader(line)
+			if !curGlim {
+				cur = append(cur, line)
+			}
+			continue
+		}
+		trim := strings.TrimSpace(line)
+		switch {
+		case !started:
+			if trim != "" && !strings.HasPrefix(trim, "#") {
+				return "", fmt.Errorf("%s: the block between %q and %q has key/value lines before any table header; "+
+					"move or delete them by hand (keep anything you want outside the markers), then re-run", path, begin, end)
+			}
+			if trim != "" {
+				comments = append(comments, line)
+			}
+		case curGlim:
+			if strings.HasPrefix(trim, "#") {
+				comments = append(comments, line)
+			}
+		default:
+			cur = append(cur, line)
+		}
+	}
+	flush()
+	res := strings.Join(comments, "\n")
+	if len(tables) > 0 {
+		if res != "" {
+			res += "\n\n"
+		}
+		res += strings.Join(tables, "\n\n")
+	}
+	return res, nil
+}
+
+// findBlock locates the managed block, returning the offsets of the begin
+// marker, the end marker, and the end of the end marker.
+func findBlock(content, begin, end string) (b, e, after int, ok bool) {
+	b = strings.Index(content, begin)
+	if b == -1 {
+		return 0, 0, 0, false
+	}
+	i := strings.Index(content[b+len(begin):], end)
+	if i == -1 {
+		return 0, 0, 0, false
+	}
+	e = b + len(begin) + i
+	return b, e, e + len(end), true
+}
+
+// upsertBlock writes glim's block between the markers. Anything inside the
+// markers that glim did not write (see splitBlock) is moved to just after the
+// end marker instead of being overwritten.
 func upsertBlock(path, begin, end, body string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -112,11 +248,19 @@ func upsertBlock(path, begin, end, body string) error {
 	}
 	block := begin + "\n" + body + "\n" + end
 	content := string(existing)
-	if b := strings.Index(content, begin); b != -1 {
-		if e := strings.Index(content, end); e != -1 && e > b {
-			content = content[:b] + block + content[e+len(end):]
-			return os.WriteFile(path, []byte(content), 0o644)
+	if b, e, after, ok := findBlock(content, begin, end); ok {
+		foreign, err := splitBlock(path, begin, end, content[b+len(begin):e], body)
+		if err != nil {
+			return err
 		}
+		if foreign != "" {
+			block += "\n\n" + foreign
+			if !strings.HasPrefix(content[after:], "\n") {
+				block += "\n"
+			}
+		}
+		content = content[:b] + block + content[after:]
+		return os.WriteFile(path, []byte(content), 0o644)
 	}
 	if content != "" && !strings.HasSuffix(content, "\n") {
 		content += "\n"
@@ -128,9 +272,10 @@ func upsertBlock(path, begin, end, body string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-// removeBlock deletes the managed block (markers included) from path, leaving
-// surrounding content intact without stacked blank lines. It reports whether
-// a block was removed.
+// removeBlock deletes glim's own content and the markers from path, leaving
+// surrounding content intact without stacked blank lines. Foreign content
+// found inside the markers stays where the block was. It reports whether a
+// block was removed.
 func removeBlock(path, begin, end string) (bool, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -140,24 +285,25 @@ func removeBlock(path, begin, end string) (bool, error) {
 		return false, err
 	}
 	content := string(data)
-	b := strings.Index(content, begin)
-	if b == -1 {
+	b, e, after, ok := findBlock(content, begin, end)
+	if !ok {
 		return false, nil
 	}
-	e := strings.Index(content[b:], end)
-	if e == -1 {
-		return false, nil
+	foreign, err := splitBlock(path, begin, end, content[b+len(begin):e], "")
+	if err != nil {
+		return false, err
 	}
 	before := strings.TrimRight(content[:b], "\n")
-	after := strings.TrimLeft(content[b+e+len(end):], "\n")
-	var out string
-	switch {
-	case before != "" && after != "":
-		out = before + "\n\n" + after
-	case before != "":
-		out = before + "\n"
-	default:
-		out = after
+	rest := strings.TrimLeft(content[after:], "\n")
+	var parts []string
+	for _, p := range []string{before, foreign, rest} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	out := strings.Join(parts, "\n\n")
+	if rest == "" && out != "" {
+		out += "\n"
 	}
 	return true, os.WriteFile(path, []byte(out), 0o644)
 }
