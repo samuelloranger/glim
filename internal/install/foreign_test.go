@@ -74,10 +74,10 @@ func TestUpsertBlockKeepsForeignContent(t *testing.T) {
 			want: tomlBlock(tomlBody) + "\n\n[a]\nx = 1\n\n[b]\ny = 2\n",
 		},
 		{
-			name:  "toml glim sub-table is glim content",
+			name:  "toml quoted-segment glim sub-table stays attached to glim",
 			file:  tomlBlock(tomlOldBody+"\n\n[mcp_servers.\"glim\".env]\nK = \"v\"\n\n"+tomlOther) + "\n",
 			begin: blockBeginTOML, end: blockEndTOML, body: tomlBody,
-			want: tomlBlock(tomlBody) + "\n\n" + tomlOther + "\n",
+			want: tomlBlock(tomlBody+"\n\n[mcp_servers.\"glim\".env]\nK = \"v\"") + "\n\n" + tomlOther + "\n",
 		},
 		{
 			name:  "toml table whose name merely starts with glim is foreign",
