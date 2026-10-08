@@ -10,15 +10,15 @@ import (
 
 func TestUpsertBlockCreatesAndIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "CLAUDE.md")
-	if err := upsertBlock(path, blockBeginMD, blockEndMD, "RULE ONE"); err != nil {
+	if err := upsertBlock(path, blockBeginMD, blockEndMD, legacySteeringRules[0]); err != nil {
 		t.Fatal(err)
 	}
 	first, _ := os.ReadFile(path)
-	if !strings.Contains(string(first), "RULE ONE") {
+	if !strings.Contains(string(first), legacySteeringRules[0]) {
 		t.Fatal("body not written")
 	}
 	// Re-running with new body replaces, does not duplicate.
-	if err := upsertBlock(path, blockBeginMD, blockEndMD, "RULE TWO"); err != nil {
+	if err := upsertBlock(path, blockBeginMD, blockEndMD, SteeringRule); err != nil {
 		t.Fatal(err)
 	}
 	second, _ := os.ReadFile(path)
@@ -26,7 +26,7 @@ func TestUpsertBlockCreatesAndIsIdempotent(t *testing.T) {
 	if strings.Count(s, blockBeginMD) != 1 || strings.Count(s, blockEndMD) != 1 {
 		t.Fatalf("expected exactly one managed block, got:\n%s", s)
 	}
-	if strings.Contains(s, "RULE ONE") || !strings.Contains(s, "RULE TWO") {
+	if strings.Contains(s, legacySteeringRules[0]) || !strings.Contains(s, SteeringRule) {
 		t.Fatalf("block not replaced:\n%s", s)
 	}
 }
@@ -34,7 +34,7 @@ func TestUpsertBlockCreatesAndIsIdempotent(t *testing.T) {
 func TestUpsertBlockPreservesSurroundingContent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "CLAUDE.md")
 	os.WriteFile(path, []byte("# My rules\n\nkeep me\n"), 0o644)
-	if err := upsertBlock(path, blockBeginMD, blockEndMD, "RULE"); err != nil {
+	if err := upsertBlock(path, blockBeginMD, blockEndMD, SteeringRule); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(path)
