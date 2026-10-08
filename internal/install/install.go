@@ -48,18 +48,28 @@ func installClaude(d Deps) ([]string, error) {
 	}
 	var steps []string
 
-	// `claude mcp add` fails when glim is already registered, so drop any
-	// existing registration first; that way a re-run repoints it at the
-	// current binary. A remove failure means nothing was registered.
-	updated := d.Run("claude", "mcp", "remove", "--scope", "user", "glim") == nil
-
-	if err := d.Run("claude", "mcp", "add", "--scope", "user", "glim", "--", d.GlimPath, "mcp"); err != nil {
-		return nil, fmt.Errorf("claude mcp add failed: %w", err)
-	}
-	if updated {
-		steps = append(steps, "updated glim MCP server registration (claude mcp remove + add --scope user)")
-	} else {
+	addArgs := []string{"mcp", "add", "--scope", "user", "glim", "--", d.GlimPath, "mcp"}
+	// `claude mcp get` exits 0 only when glim is registered. A registration is
+	// replaced (remove + add) so a re-run repoints it at the current binary;
+	// nothing is removed unless one exists.
+	if d.Run("claude", "mcp", "get", "glim") != nil {
+		if err := d.Run("claude", addArgs...); err != nil {
+			return nil, fmt.Errorf("claude mcp add failed: %w", err)
+		}
 		steps = append(steps, "registered glim MCP server (claude mcp add --scope user)")
+	} else if rmErr := d.Run("claude", "mcp", "remove", "--scope", "user", "glim"); rmErr != nil {
+		// get also sees project/local-scope registrations; with no user-scope
+		// one, remove fails and nothing was removed, so a plain add is safe.
+		if err := d.Run("claude", addArgs...); err != nil {
+			return nil, fmt.Errorf("claude mcp remove --scope user failed (%w) and claude mcp add failed (%w); any existing glim registration was left unchanged", rmErr, err)
+		}
+		steps = append(steps, "registered glim MCP server (claude mcp add --scope user)")
+	} else {
+		if err := d.Run("claude", addArgs...); err != nil {
+			return nil, fmt.Errorf("glim is now UNREGISTERED from Claude: claude mcp add failed after removing the old registration (%w); re-add it with: claude mcp add --scope user glim -- %s mcp",
+				err, shellQuote(d.GlimPath))
+		}
+		steps = append(steps, "updated glim MCP server registration (claude mcp remove + add --scope user)")
 	}
 
 	path := filepath.Join(d.Home, ".claude", "CLAUDE.md")
@@ -68,6 +78,12 @@ func installClaude(d Deps) ([]string, error) {
 	}
 	steps = append(steps, "wrote steering rule to "+path)
 	return steps, nil
+}
+
+// shellQuote quotes s for a POSIX shell, so a printed command can be pasted
+// as is even when the path holds spaces or quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func installCodex(d Deps) ([]string, error) {
