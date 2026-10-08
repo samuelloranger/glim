@@ -49,17 +49,21 @@ func installClaude(d Deps) ([]string, error) {
 	var steps []string
 
 	addArgs := []string{"mcp", "add", "--scope", "user", "glim", "--", d.GlimPath, "mcp"}
-	if addErr := d.Run("claude", addArgs...); addErr == nil {
+	// `claude mcp get` exits 0 only when glim is registered. A registration is
+	// replaced (remove + add) so a re-run repoints it at the current binary;
+	// nothing is removed unless one exists.
+	if d.Run("claude", "mcp", "get", "glim") != nil {
+		if err := d.Run("claude", addArgs...); err != nil {
+			return nil, fmt.Errorf("claude mcp add failed: %w", err)
+		}
 		steps = append(steps, "registered glim MCP server (claude mcp add --scope user)")
 	} else {
-		// `add` fails when glim is already registered. Replace the existing
-		// registration, so a re-run repoints it at the current binary. The
-		// working registration is only removed once `add` has failed.
-		if rmErr := d.Run("claude", "mcp", "remove", "--scope", "user", "glim"); rmErr != nil {
-			return nil, fmt.Errorf("claude mcp add failed (%v) and claude mcp remove failed (%v); any existing glim registration was left unchanged", addErr, rmErr)
+		if err := d.Run("claude", "mcp", "remove", "--scope", "user", "glim"); err != nil {
+			return nil, fmt.Errorf("claude mcp remove failed, the existing glim registration was left unchanged: %w", err)
 		}
 		if err := d.Run("claude", addArgs...); err != nil {
-			return nil, fmt.Errorf("glim is now UNREGISTERED from Claude: claude mcp add failed after removing the old registration (%w); re-add it with: claude mcp add --scope user glim -- %s mcp", err, d.GlimPath)
+			return nil, fmt.Errorf("glim is now UNREGISTERED from Claude: claude mcp add failed after removing the old registration (%w); re-add it with: claude mcp add --scope user glim -- %s mcp",
+				err, shellQuote(d.GlimPath))
 		}
 		steps = append(steps, "updated glim MCP server registration (claude mcp remove + add --scope user)")
 	}
@@ -70,6 +74,12 @@ func installClaude(d Deps) ([]string, error) {
 	}
 	steps = append(steps, "wrote steering rule to "+path)
 	return steps, nil
+}
+
+// shellQuote quotes s for a POSIX shell, so a printed command can be pasted
+// as is even when the path holds spaces or quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func installCodex(d Deps) ([]string, error) {

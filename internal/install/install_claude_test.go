@@ -22,17 +22,43 @@ func claudeAdd(path string) []string {
 
 var claudeRemove = []string{"claude", "mcp", "remove", "--scope", "user", "glim"}
 
-// scripted makes Run return errs[i] for call i (nil past the end) and
-// records every call.
-func scripted(d *Deps, calls *[][]string, errs ...error) {
-	d.Run = func(name string, args ...string) error {
-		i := len(*calls)
-		*calls = append(*calls, append([]string{name}, args...))
-		if i < len(errs) {
-			return errs[i]
+var claudeGet = []string{"claude", "mcp", "get", "glim"}
+
+// fakeClaude models claude's user-scope registry: get fails when glim is not
+// registered, add fails when it is. failAdd/failRemove force those commands
+// to fail. Every call is recorded.
+type fakeClaude struct {
+	registered string // registered glim path, "" when not registered
+	failAdd    error
+	failRemove error
+	calls      [][]string
+}
+
+func (f *fakeClaude) run(name string, args ...string) error {
+	f.calls = append(f.calls, append([]string{name}, args...))
+	switch args[1] {
+	case "get":
+		if f.registered == "" {
+			return errors.New("no MCP server found with name: glim")
 		}
-		return nil
+	case "remove":
+		if f.failRemove != nil {
+			return f.failRemove
+		}
+		if f.registered == "" {
+			return errors.New("no user-scoped MCP server found with name: glim")
+		}
+		f.registered = ""
+	case "add":
+		if f.failAdd != nil {
+			return f.failAdd
+		}
+		if f.registered != "" {
+			return errors.New("MCP server glim already exists in user config")
+		}
+		f.registered = args[6]
 	}
+	return nil
 }
 
 func ruleWritten(d Deps) bool {
@@ -40,15 +66,18 @@ func ruleWritten(d Deps) bool {
 	return err == nil && strings.Contains(string(md), SteeringRule)
 }
 
-func TestInstallClaudeFreshAddSucceeds(t *testing.T) {
+func TestInstallClaudeFreshRegisters(t *testing.T) {
 	d, _ := testDeps(t)
-	var calls [][]string
-	scripted(&d, &calls)
+	f := &fakeClaude{}
+	d.Run = f.run
 	steps, err := Install("claude", d)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertCalls(t, calls, [][]string{claudeAdd("/usr/bin/glim")})
+	assertCalls(t, f.calls, [][]string{claudeGet, claudeAdd("/usr/bin/glim")})
+	if f.registered != "/usr/bin/glim" {
+		t.Fatalf("registered %q", f.registered)
+	}
 	if !strings.HasPrefix(steps[0], "registered glim MCP server") || len(steps) != 2 {
 		t.Fatalf("steps: %v", steps)
 	}
@@ -58,42 +87,18 @@ func TestInstallClaudeFreshAddSucceeds(t *testing.T) {
 }
 
 func TestInstallClaudeRerunUpdatesExistingRegistration(t *testing.T) {
-	registered := ""
-	var calls [][]string
 	d, _ := testDeps(t)
-	d.Run = func(name string, args ...string) error {
-		calls = append(calls, append([]string{name}, args...))
-		switch args[1] {
-		case "remove":
-			if registered == "" {
-				return os.ErrNotExist
-			}
-			registered = ""
-		case "add":
-			if registered != "" {
-				return os.ErrExist // claude: "already exists in user config"
-			}
-			registered = args[6]
-		}
-		return nil
-	}
-	if _, err := Install("claude", d); err != nil {
-		t.Fatal(err)
-	}
-	// glim moved to a path containing a space: re-run.
+	f := &fakeClaude{registered: "/usr/bin/glim"}
+	d.Run = f.run
+	// glim moved to a path containing a space.
 	d.GlimPath = "/opt/new dir/glim"
-	calls = nil
 	steps, err := Install("claude", d)
 	if err != nil {
 		t.Fatalf("re-run failed: %v", err)
 	}
-	assertCalls(t, calls, [][]string{
-		claudeAdd("/opt/new dir/glim"),
-		claudeRemove,
-		claudeAdd("/opt/new dir/glim"),
-	})
-	if registered != "/opt/new dir/glim" {
-		t.Fatalf("registration not updated: %q", registered)
+	assertCalls(t, f.calls, [][]string{claudeGet, claudeRemove, claudeAdd("/opt/new dir/glim")})
+	if f.registered != "/opt/new dir/glim" {
+		t.Fatalf("registration not updated: %q", f.registered)
 	}
 	if !strings.HasPrefix(steps[0], "updated glim MCP server registration") || len(steps) != 2 {
 		t.Fatalf("steps: %v", steps)
@@ -103,21 +108,34 @@ func TestInstallClaudeRerunUpdatesExistingRegistration(t *testing.T) {
 	}
 }
 
+func TestInstallClaudeFreshAddFailureRemovesNothing(t *testing.T) {
+	d, _ := testDeps(t)
+	addErr := errors.New("add boom")
+	f := &fakeClaude{failAdd: addErr}
+	d.Run = f.run
+	_, err := Install("claude", d)
+	if !errors.Is(err, addErr) {
+		t.Fatalf("err = %v, want wrapping %v", err, addErr)
+	}
+	assertCalls(t, f.calls, [][]string{claudeGet, claudeAdd("/usr/bin/glim")})
+	if ruleWritten(d) {
+		t.Fatal("steering rule written despite error")
+	}
+}
+
 func TestInstallClaudeRemoveFailureLeavesRegistrationUnchanged(t *testing.T) {
 	d, _ := testDeps(t)
-	var calls [][]string
-	addErr, rmErr := errors.New("add boom"), errors.New("remove boom")
-	scripted(&d, &calls, addErr, rmErr)
+	rmErr := errors.New("remove boom")
+	f := &fakeClaude{registered: "/old/glim", failRemove: rmErr}
+	d.Run = f.run
 	_, err := Install("claude", d)
-	if err == nil {
-		t.Fatal("expected error")
+	if !errors.Is(err, rmErr) || !strings.Contains(err.Error(), "left unchanged") {
+		t.Fatalf("err = %v", err)
 	}
-	for _, want := range []string{"add boom", "remove boom", "left unchanged"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error %q missing %q", err, want)
-		}
+	assertCalls(t, f.calls, [][]string{claudeGet, claudeRemove})
+	if f.registered != "/old/glim" {
+		t.Fatalf("registration changed: %q", f.registered)
 	}
-	assertCalls(t, calls, [][]string{claudeAdd("/usr/bin/glim"), claudeRemove})
 	if ruleWritten(d) {
 		t.Fatal("steering rule written despite error")
 	}
@@ -125,20 +143,35 @@ func TestInstallClaudeRemoveFailureLeavesRegistrationUnchanged(t *testing.T) {
 
 func TestInstallClaudeSecondAddFailureReportsUnregistered(t *testing.T) {
 	d, _ := testDeps(t)
-	var calls [][]string
-	scripted(&d, &calls, errors.New("first"), nil, errors.New("second boom"))
+	addErr := errors.New("add boom")
+	f := &fakeClaude{registered: "/old/glim", failAdd: addErr}
+	d.Run = f.run
+	d.GlimPath = "/opt/it's here/glim"
 	_, err := Install("claude", d)
-	if err == nil {
-		t.Fatal("expected error")
+	if !errors.Is(err, addErr) {
+		t.Fatalf("err = %v, want wrapping %v", err, addErr)
 	}
-	for _, want := range []string{"UNREGISTERED", "second boom", "claude mcp add --scope user glim -- /usr/bin/glim mcp"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error %q missing %q", err, want)
+	want := `claude mcp add --scope user glim -- '/opt/it'\''s here/glim' mcp`
+	for _, w := range []string{"UNREGISTERED", want} {
+		if !strings.Contains(err.Error(), w) {
+			t.Fatalf("error %q missing %q", err, w)
 		}
 	}
-	assertCalls(t, calls, [][]string{claudeAdd("/usr/bin/glim"), claudeRemove, claudeAdd("/usr/bin/glim")})
+	assertCalls(t, f.calls, [][]string{claudeGet, claudeRemove, claudeAdd("/opt/it's here/glim")})
 	if ruleWritten(d) {
 		t.Fatal("steering rule written despite error")
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	for in, want := range map[string]string{
+		"/usr/bin/glim":  `'/usr/bin/glim'`,
+		"/opt/a b/glim":  `'/opt/a b/glim'`,
+		"/opt/it's/glim": `'/opt/it'\''s/glim'`,
+	} {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)
+		}
 	}
 }
 
