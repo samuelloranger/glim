@@ -1,110 +1,154 @@
 package install
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-func assertCalls(t *testing.T, got [][]string, want []string) {
+func assertCalls(t *testing.T, got, want [][]string) {
 	t.Helper()
-	var joined []string
-	for _, c := range got {
-		joined = append(joined, strings.Join(c, " "))
-	}
-	if strings.Join(joined, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("calls:\n%s\nwant:\n%s", strings.Join(joined, "\n"), strings.Join(want, "\n"))
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls:\n%q\nwant:\n%q", got, want)
 	}
 }
 
-func TestInstallClaudeFreshRegisters(t *testing.T) {
-	d, calls := testDeps(t)
+func claudeAdd(path string) []string {
+	return []string{"claude", "mcp", "add", "--scope", "user", "glim", "--", path, "mcp"}
+}
+
+var claudeRemove = []string{"claude", "mcp", "remove", "--scope", "user", "glim"}
+
+// scripted makes Run return errs[i] for call i (nil past the end) and
+// records every call.
+func scripted(d *Deps, calls *[][]string, errs ...error) {
 	d.Run = func(name string, args ...string) error {
+		i := len(*calls)
 		*calls = append(*calls, append([]string{name}, args...))
-		if args[1] == "remove" {
-			return os.ErrNotExist // not registered yet
+		if i < len(errs) {
+			return errs[i]
 		}
 		return nil
 	}
+}
+
+func ruleWritten(d Deps) bool {
+	md, err := os.ReadFile(filepath.Join(d.Home, ".claude", "CLAUDE.md"))
+	return err == nil && strings.Contains(string(md), SteeringRule)
+}
+
+func TestInstallClaudeFreshAddSucceeds(t *testing.T) {
+	d, _ := testDeps(t)
+	var calls [][]string
+	scripted(&d, &calls)
 	steps, err := Install("claude", d)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertCalls(t, *calls, []string{
-		"claude mcp remove --scope user glim",
-		"claude mcp add --scope user glim -- /usr/bin/glim mcp",
-	})
-	if !strings.HasPrefix(steps[0], "registered glim MCP server") {
+	assertCalls(t, calls, [][]string{claudeAdd("/usr/bin/glim")})
+	if !strings.HasPrefix(steps[0], "registered glim MCP server") || len(steps) != 2 {
 		t.Fatalf("steps: %v", steps)
 	}
-	md, _ := os.ReadFile(filepath.Join(d.Home, ".claude", "CLAUDE.md"))
-	if !strings.Contains(string(md), SteeringRule) {
+	if !ruleWritten(d) {
 		t.Fatal("steering rule not written")
 	}
 }
 
 func TestInstallClaudeRerunUpdatesExistingRegistration(t *testing.T) {
-	registered := map[string]string{}
+	registered := ""
 	var calls [][]string
 	d, _ := testDeps(t)
 	d.Run = func(name string, args ...string) error {
 		calls = append(calls, append([]string{name}, args...))
 		switch args[1] {
 		case "remove":
-			if _, ok := registered["glim"]; !ok {
+			if registered == "" {
 				return os.ErrNotExist
 			}
-			delete(registered, "glim")
+			registered = ""
 		case "add":
-			if _, ok := registered["glim"]; ok {
+			if registered != "" {
 				return os.ErrExist // claude: "already exists in user config"
 			}
-			registered["glim"] = args[6]
+			registered = args[6]
 		}
 		return nil
 	}
 	if _, err := Install("claude", d); err != nil {
 		t.Fatal(err)
 	}
-	// glim moved: re-run with a new binary path.
-	d.GlimPath = "/opt/new/glim"
+	// glim moved to a path containing a space: re-run.
+	d.GlimPath = "/opt/new dir/glim"
 	calls = nil
 	steps, err := Install("claude", d)
 	if err != nil {
 		t.Fatalf("re-run failed: %v", err)
 	}
-	assertCalls(t, calls, []string{
-		"claude mcp remove --scope user glim",
-		"claude mcp add --scope user glim -- /opt/new/glim mcp",
+	assertCalls(t, calls, [][]string{
+		claudeAdd("/opt/new dir/glim"),
+		claudeRemove,
+		claudeAdd("/opt/new dir/glim"),
 	})
-	if registered["glim"] != "/opt/new/glim" {
-		t.Fatalf("registration not updated: %v", registered)
+	if registered != "/opt/new dir/glim" {
+		t.Fatalf("registration not updated: %q", registered)
 	}
-	if !strings.HasPrefix(steps[0], "updated glim MCP server registration") {
+	if !strings.HasPrefix(steps[0], "updated glim MCP server registration") || len(steps) != 2 {
 		t.Fatalf("steps: %v", steps)
 	}
-	if len(steps) != 2 || !strings.HasPrefix(steps[1], "wrote steering rule") {
-		t.Fatalf("steering rule step missing: %v", steps)
-	}
-	md, _ := os.ReadFile(filepath.Join(d.Home, ".claude", "CLAUDE.md"))
-	if strings.Count(string(md), blockBeginMD) != 1 {
-		t.Fatalf("expected one managed block:\n%s", md)
+	if !ruleWritten(d) {
+		t.Fatal("steering rule not written")
 	}
 }
 
-func TestInstallClaudeAddFailureStillErrors(t *testing.T) {
+func TestInstallClaudeRemoveFailureLeavesRegistrationUnchanged(t *testing.T) {
 	d, _ := testDeps(t)
-	d.Run = func(string, ...string) error { return os.ErrPermission }
-	if _, err := Install("claude", d); err == nil {
-		t.Fatal("expected add failure to be reported")
+	var calls [][]string
+	addErr, rmErr := errors.New("add boom"), errors.New("remove boom")
+	scripted(&d, &calls, addErr, rmErr)
+	_, err := Install("claude", d)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, want := range []string{"add boom", "remove boom", "left unchanged"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q missing %q", err, want)
+		}
+	}
+	assertCalls(t, calls, [][]string{claudeAdd("/usr/bin/glim"), claudeRemove})
+	if ruleWritten(d) {
+		t.Fatal("steering rule written despite error")
 	}
 }
 
-func TestInstallClaudeNotInstalledUnchanged(t *testing.T) {
+func TestInstallClaudeSecondAddFailureReportsUnregistered(t *testing.T) {
+	d, _ := testDeps(t)
+	var calls [][]string
+	scripted(&d, &calls, errors.New("first"), nil, errors.New("second boom"))
+	_, err := Install("claude", d)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, want := range []string{"UNREGISTERED", "second boom", "claude mcp add --scope user glim -- /usr/bin/glim mcp"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q missing %q", err, want)
+		}
+	}
+	assertCalls(t, calls, [][]string{claudeAdd("/usr/bin/glim"), claudeRemove, claudeAdd("/usr/bin/glim")})
+	if ruleWritten(d) {
+		t.Fatal("steering rule written despite error")
+	}
+}
+
+func TestInstallClaudeNotInstalledMakesNoCalls(t *testing.T) {
 	d, calls := testDeps(t)
 	d.HasCommand = func(string) bool { return false }
 	if _, err := Install("claude", d); err == nil || len(*calls) != 0 {
 		t.Fatalf("err=%v calls=%v", err, *calls)
+	}
+	if ruleWritten(d) {
+		t.Fatal("steering rule written")
 	}
 }

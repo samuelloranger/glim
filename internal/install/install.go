@@ -48,18 +48,20 @@ func installClaude(d Deps) ([]string, error) {
 	}
 	var steps []string
 
-	// `claude mcp add` fails when glim is already registered, so drop any
-	// existing registration first; that way a re-run repoints it at the
-	// current binary. A remove failure means nothing was registered.
-	updated := d.Run("claude", "mcp", "remove", "--scope", "user", "glim") == nil
-
-	if err := d.Run("claude", "mcp", "add", "--scope", "user", "glim", "--", d.GlimPath, "mcp"); err != nil {
-		return nil, fmt.Errorf("claude mcp add failed: %w", err)
-	}
-	if updated {
-		steps = append(steps, "updated glim MCP server registration (claude mcp remove + add --scope user)")
-	} else {
+	addArgs := []string{"mcp", "add", "--scope", "user", "glim", "--", d.GlimPath, "mcp"}
+	if addErr := d.Run("claude", addArgs...); addErr == nil {
 		steps = append(steps, "registered glim MCP server (claude mcp add --scope user)")
+	} else {
+		// `add` fails when glim is already registered. Replace the existing
+		// registration, so a re-run repoints it at the current binary. The
+		// working registration is only removed once `add` has failed.
+		if rmErr := d.Run("claude", "mcp", "remove", "--scope", "user", "glim"); rmErr != nil {
+			return nil, fmt.Errorf("claude mcp add failed (%v) and claude mcp remove failed (%v); any existing glim registration was left unchanged", addErr, rmErr)
+		}
+		if err := d.Run("claude", addArgs...); err != nil {
+			return nil, fmt.Errorf("glim is now UNREGISTERED from Claude: claude mcp add failed after removing the old registration (%w); re-add it with: claude mcp add --scope user glim -- %s mcp", err, d.GlimPath)
+		}
+		steps = append(steps, "updated glim MCP server registration (claude mcp remove + add --scope user)")
 	}
 
 	path := filepath.Join(d.Home, ".claude", "CLAUDE.md")
