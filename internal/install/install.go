@@ -57,10 +57,14 @@ func installClaude(d Deps) ([]string, error) {
 			return nil, fmt.Errorf("claude mcp add failed: %w", err)
 		}
 		steps = append(steps, "registered glim MCP server (claude mcp add --scope user)")
-	} else {
-		if err := d.Run("claude", "mcp", "remove", "--scope", "user", "glim"); err != nil {
-			return nil, fmt.Errorf("claude mcp remove failed, the existing glim registration was left unchanged: %w", err)
+	} else if rmErr := d.Run("claude", "mcp", "remove", "--scope", "user", "glim"); rmErr != nil {
+		// get also sees project/local-scope registrations; with no user-scope
+		// one, remove fails and nothing was removed, so a plain add is safe.
+		if err := d.Run("claude", addArgs...); err != nil {
+			return nil, fmt.Errorf("claude mcp remove --scope user failed (%w) and claude mcp add failed (%w); any existing glim registration was left unchanged", rmErr, err)
 		}
+		steps = append(steps, "registered glim MCP server (claude mcp add --scope user)")
+	} else {
 		if err := d.Run("claude", addArgs...); err != nil {
 			return nil, fmt.Errorf("glim is now UNREGISTERED from Claude: claude mcp add failed after removing the old registration (%w); re-add it with: claude mcp add --scope user glim -- %s mcp",
 				err, shellQuote(d.GlimPath))

@@ -28,7 +28,8 @@ var claudeGet = []string{"claude", "mcp", "get", "glim"}
 // registered, add fails when it is. failAdd/failRemove force those commands
 // to fail. Every call is recorded.
 type fakeClaude struct {
-	registered string // registered glim path, "" when not registered
+	registered string // user-scope glim path, "" when not registered
+	otherScope bool   // glim also registered in project/local scope
 	failAdd    error
 	failRemove error
 	calls      [][]string
@@ -38,7 +39,7 @@ func (f *fakeClaude) run(name string, args ...string) error {
 	f.calls = append(f.calls, append([]string{name}, args...))
 	switch args[1] {
 	case "get":
-		if f.registered == "" {
+		if f.registered == "" && !f.otherScope {
 			return errors.New("no MCP server found with name: glim")
 		}
 	case "remove":
@@ -132,12 +133,32 @@ func TestInstallClaudeRemoveFailureLeavesRegistrationUnchanged(t *testing.T) {
 	if !errors.Is(err, rmErr) || !strings.Contains(err.Error(), "left unchanged") {
 		t.Fatalf("err = %v", err)
 	}
-	assertCalls(t, f.calls, [][]string{claudeGet, claudeRemove})
+	assertCalls(t, f.calls, [][]string{claudeGet, claudeRemove, claudeAdd("/usr/bin/glim")})
 	if f.registered != "/old/glim" {
 		t.Fatalf("registration changed: %q", f.registered)
 	}
 	if ruleWritten(d) {
 		t.Fatal("steering rule written despite error")
+	}
+}
+
+func TestInstallClaudeOtherScopeOnlyStillRegistersUserScope(t *testing.T) {
+	d, _ := testDeps(t)
+	f := &fakeClaude{otherScope: true}
+	d.Run = f.run
+	steps, err := Install("claude", d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCalls(t, f.calls, [][]string{claudeGet, claudeRemove, claudeAdd("/usr/bin/glim")})
+	if f.registered != "/usr/bin/glim" {
+		t.Fatalf("registered %q", f.registered)
+	}
+	if !strings.HasPrefix(steps[0], "registered glim MCP server") {
+		t.Fatalf("steps: %v", steps)
+	}
+	if !ruleWritten(d) {
+		t.Fatal("steering rule not written")
 	}
 }
 
