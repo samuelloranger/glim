@@ -48,10 +48,19 @@ func installClaude(d Deps) ([]string, error) {
 	}
 	var steps []string
 
+	// `claude mcp add` fails when glim is already registered, so drop any
+	// existing registration first; that way a re-run repoints it at the
+	// current binary. A remove failure means nothing was registered.
+	updated := d.Run("claude", "mcp", "remove", "--scope", "user", "glim") == nil
+
 	if err := d.Run("claude", "mcp", "add", "--scope", "user", "glim", "--", d.GlimPath, "mcp"); err != nil {
 		return nil, fmt.Errorf("claude mcp add failed: %w", err)
 	}
-	steps = append(steps, "registered glim MCP server (claude mcp add --scope user)")
+	if updated {
+		steps = append(steps, "updated glim MCP server registration (claude mcp remove + add --scope user)")
+	} else {
+		steps = append(steps, "registered glim MCP server (claude mcp add --scope user)")
+	}
 
 	path := filepath.Join(d.Home, ".claude", "CLAUDE.md")
 	if err := upsertBlock(path, blockBeginMD, blockEndMD, SteeringRule); err != nil {
