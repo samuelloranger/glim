@@ -36,10 +36,10 @@ func PreviewHandlerWith(st *store.Store, views *Views) http.Handler {
 // visitor holding its unlock cookie. A nil unlock leaves locked previews
 // permanently locked (fail closed).
 func PreviewHandlerFull(st *store.Store, views *Views, unlock *Unlock) http.Handler {
-	return previewHandler(st, views, unlock, false)
+	return previewHandler(st, views, unlock, false, true)
 }
 
-func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) http.Handler {
+func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFetch bool) http.Handler {
 	fsys := noListFS{http.Dir(st.Root)}
 	files := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +78,24 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) ht
 				return
 			}
 		}
+		if selfFetch && !m.Locked() {
+			// Locked previews never get CORS headers: the unlock cookie is not
+			// sent from an opaque origin, and allowing credentials would let
+			// any sandboxed page elsewhere read locked content.
+			w.Header().Add("Vary", "Origin")
+			if r.Header.Get("Origin") == "null" {
+				if isCORSPreflight(r) {
+					h := w.Header()
+					h.Set("Access-Control-Allow-Origin", "null")
+					h.Set("Access-Control-Allow-Methods", "GET, HEAD")
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				if r.Method == http.MethodGet || r.Method == http.MethodHead {
+					w = &corsWriter{ResponseWriter: w}
+				}
+			}
+		}
 		if serveHTMLInjected(w, r, fsys, func(doc []byte) (string, string) {
 			now := time.Now()
 			if st.Now != nil {
@@ -95,6 +113,47 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) ht
 		}
 		files.ServeHTTP(w, r)
 	})
+}
+
+// isCORSPreflight reports whether r is a preflight from an opaque origin for a
+// method a preview serves.
+func isCORSPreflight(r *http.Request) bool {
+	if r.Method != http.MethodOptions {
+		return false
+	}
+	switch strings.ToUpper(r.Header.Get("Access-Control-Request-Method")) {
+	case http.MethodGet, http.MethodHead:
+		return true
+	}
+	return false
+}
+
+// corsWriter adds Access-Control-Allow-Origin: null to successful responses, so
+// a sandboxed (opaque-origin) preview page can fetch its own files. It never
+// sets Access-Control-Allow-Credentials.
+type corsWriter struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (c *corsWriter) WriteHeader(code int) {
+	if !c.wrote {
+		c.wrote = true
+		// A CORS fetch must pass the check on every hop, so redirects (such as
+		// a directory's trailing-slash redirect) are tagged too; they carry no
+		// content.
+		if (code >= 200 && code < 400) && code != http.StatusMultipleChoices {
+			c.Header().Set("Access-Control-Allow-Origin", "null")
+		}
+	}
+	c.ResponseWriter.WriteHeader(code)
+}
+
+func (c *corsWriter) Write(b []byte) (int, error) {
+	if !c.wrote {
+		c.WriteHeader(http.StatusOK)
+	}
+	return c.ResponseWriter.Write(b)
 }
 
 func hasDotSegment(p string) bool {
@@ -137,11 +196,14 @@ type Options struct {
 	// LiveReload serves /_glim/live/<slug> and injects the reload script into
 	// served HTML pages.
 	LiveReload bool
-	Live       *Live // optional: overrides the default stream settings (tests)
+	// NoSelfFetch turns off the CORS answers that let a preview page fetch its
+	// own files (on by default).
+	NoSelfFetch bool
+	Live        *Live // optional: overrides the default stream settings (tests)
 }
 
 func NewRouter(o Options) http.Handler {
-	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload)
+	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload, !o.NoSelfFetch)
 	live := o.Live
 	if o.LiveReload && live == nil {
 		live = NewLive(o.Store)

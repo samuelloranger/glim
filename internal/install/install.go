@@ -14,8 +14,8 @@ import (
 // are served with a sandbox Content-Security-Policy and no allow-same-origin,
 // so every page runs in an opaque origin.
 const sandboxNote = "Previews run in a sandbox: write a self-contained page; localStorage, sessionStorage, cookies, " +
-	"IndexedDB and service workers throw (wrap them in try/catch), fetch/XHR of the page's own files fails " +
-	"(inline the data), and scripts, styles and images from a CDN work."
+	"IndexedDB and service workers throw (wrap them in try/catch), fetch/XHR of the page's own files works " +
+	"(not for password-protected previews: inline the data there), and scripts, styles and images from a CDN work."
 
 const steeringBase = "To show the user any HTML, Markdown or other visual preview, call the glim `present` MCP tool " +
 	"and give the user the returned link. To update a preview, call `present` again with the same `name`: " +

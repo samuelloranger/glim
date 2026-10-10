@@ -23,6 +23,20 @@ Previews run as an isolated (opaque) origin: scripts, forms, pop-ups and
 downloads work, but `localStorage`, `sessionStorage` and cookies are
 unavailable — code that touches them without a `try`/`catch` will throw.
 
+A request carrying `Origin: null` (a sandboxed page fetching its own files) gets
+`Access-Control-Allow-Origin: null` on successful responses, and a `GET`/`HEAD`
+preflight is answered with `204`; no other origin is allowed, credentials are
+never allowed, and password-protected previews send no CORS headers.
+
+The trade-off: `Origin: null` is sent by any opaque-origin context (a sandboxed
+frame on another site, a `data:` URL, a local file), and browsers send no
+`Referer` for them, so glim cannot tell a preview's own fetch from a foreign
+one. Any such page that knows an unlocked preview's slug can read it. That only
+matters when glim is reachable without credentials, for example on a LAN or
+behind an IP allowlist; turn the headers off with `glim config --self-fetch false`
+(config key `self_fetch`, env `GLIM_SELF_FETCH`), which makes own-file `fetch`
+fail again. Password-protect previews that must stay private.
+
 Previews are kept out of search engines: every preview response carries
 `X-Robots-Tag: noindex, nofollow`, and `/robots.txt` serves `Disallow: /`.
 
