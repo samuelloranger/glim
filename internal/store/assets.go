@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"errors"
 	"html"
 	"io"
@@ -36,14 +37,12 @@ var inertOpen = regexp.MustCompile(`(?is)^<(?:pre|code|script|style)\b[^>]*>`)
 
 func stripInert(page []byte) []byte {
 	return inertHTML.ReplaceAllFunc(page, func(m []byte) []byte {
-		if bytesHasPrefix(m, "<!--") {
+		if bytes.HasPrefix(m, []byte("<!--")) {
 			return nil
 		}
 		return inertOpen.Find(m)
 	})
 }
-
-func bytesHasPrefix(b []byte, p string) bool { return strings.HasPrefix(string(b), p) }
 
 var schemeRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*:`)
 
