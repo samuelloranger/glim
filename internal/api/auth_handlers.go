@@ -65,18 +65,21 @@ func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.ToLower(strings.TrimSpace(body.Email))
 	ip := clientIP(r)
-	if wait := s.d.Limiter.Check(name, ip); wait > 0 {
+	// Reserve counts the attempt before the password is checked, so parallel
+	// guesses cannot all pass the limit.
+	if wait := s.d.Limiter.Reserve(name, ip); wait > 0 {
 		tooMany(w, wait)
 		return
 	}
 	user, err := s.d.Auth.Authenticate(r.Context(), name, body.Password)
 	if err != nil {
-		if errors.Is(err, auth.ErrBadCredentials) {
-			s.d.Limiter.Fail(name, ip)
+		if !errors.Is(err, auth.ErrBadCredentials) {
+			s.d.Limiter.Release(name, ip)
 		}
 		s.fail(w, err)
 		return
 	}
+	s.d.Limiter.Release(name, ip)
 	s.d.Limiter.Succeed(name)
 	s.startSession(w, r, user, http.StatusOK)
 }

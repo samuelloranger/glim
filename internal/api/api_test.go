@@ -15,7 +15,8 @@ func TestClientIP(t *testing.T) {
 		{"172.18.0.2:1", "198.51.100.9", "198.51.100.9"},          // proxy on a private net
 		{"127.0.0.1:1", "6.6.6.6, 198.51.100.9", "198.51.100.9"},  // right-most untrusted hop
 		{"127.0.0.1:1", "198.51.100.9, 10.0.0.5", "198.51.100.9"}, // skip trusted hops
-		{"127.0.0.1:1", "192.168.1.20", "192.168.1.20"},           // all trusted: left-most
+		{"127.0.0.1:1", "192.168.1.20", "192.168.1.20"},           // all trusted: the hop the proxy appended
+		{"127.0.0.1:1", "10.9.9.9, 192.168.1.20", "192.168.1.20"}, // a client-prepended private entry cannot pick the key
 		{"[::1]:1", "2001:db8::1", "2001:db8::1"},
 	}
 	for _, c := range cases {

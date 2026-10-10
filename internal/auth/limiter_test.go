@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -127,5 +128,66 @@ func TestLimiterSweepKeepsThrottledAccounts(t *testing.T) {
 	l.Check("amy", "9.9.9.9")
 	if w := l.Check("sam", ""); w != 0 {
 		t.Fatalf("stale account kept: %v", w)
+	}
+}
+
+func TestLimiterReserveCountsBeforeVerification(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	l := NewLimiter(c.now)
+	admitted := 0
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if l.Reserve("sam", "1.1.1.1") == 0 {
+				mu.Lock()
+				admitted++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if admitted != userFreeFails {
+		t.Fatalf("admitted %d concurrent attempts, want %d", admitted, userFreeFails)
+	}
+}
+
+func TestLimiterReleaseUndoesReservation(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	l := NewLimiter(c.now)
+	for i := 0; i < 100; i++ {
+		if w := l.Reserve("sam", "1.1.1.1"); w != 0 {
+			t.Fatalf("attempt %d blocked for %v", i, w)
+		}
+		l.Release("sam", "1.1.1.1") // each attempt succeeded
+	}
+	if w := l.Check("sam", "1.1.1.1"); w != 0 {
+		t.Fatalf("released attempts still count: %v", w)
+	}
+}
+
+func TestLimiterReserveWindow(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	l := NewLimiter(c.now)
+	for i := 0; i < 3; i++ {
+		if w := l.ReserveWindow("k", 3, time.Minute); w != 0 {
+			t.Fatalf("attempt %d blocked for %v", i, w)
+		}
+	}
+	if w := l.ReserveWindow("k", 3, time.Minute); w <= 0 || w > time.Minute {
+		t.Fatalf("4th attempt wait = %v", w)
+	}
+	if w := l.ReserveWindow("other", 3, time.Minute); w != 0 {
+		t.Fatalf("other key blocked: %v", w)
+	}
+	l.ReleaseWindow("k")
+	if w := l.ReserveWindow("k", 3, time.Minute); w != 0 {
+		t.Fatalf("after release = %v", w)
+	}
+	c.advance(time.Minute)
+	if w := l.ReserveWindow("k", 3, time.Minute); w != 0 {
+		t.Fatalf("after window = %v", w)
 	}
 }

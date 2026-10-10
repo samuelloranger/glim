@@ -65,6 +65,10 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) ht
 		}
 		base = strings.TrimRight(base, "/")
 		if m.Locked() {
+			// Every response for a locked preview, assets and oversized HTML
+			// included, is for the unlocked visitor alone: a shared cache
+			// must never store it. guardLocked's own replies set no-store.
+			w.Header().Set("Cache-Control", "private, no-store")
 			if r.URL.Path == "/"+slug {
 				// The unlock cookie is scoped to /<slug>/, so always land on it.
 				http.Redirect(w, r, "/"+slug+"/", http.StatusMovedPermanently)

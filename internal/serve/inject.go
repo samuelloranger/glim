@@ -240,7 +240,9 @@ func serveHTMLInjected(w http.ResponseWriter, r *http.Request, fsys http.FileSys
 		// manifest), so validate on the injected bytes, never on mtime.
 		sum := sha256.Sum256(out)
 		w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:16])+`"`)
-		w.Header().Set("Cache-Control", "no-cache")
+		if w.Header().Get("Cache-Control") == "" {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		// mtime cannot validate this body; drop the date validator.
 		r = r.Clone(r.Context())
 		r.Header.Del("If-Modified-Since")
