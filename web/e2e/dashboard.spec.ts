@@ -56,10 +56,13 @@ test("extend, pin and copy update in place", async () => {
   await c.getByRole("button", { name: "Extend" }).click();
   await c.getByRole("button", { name: "24h" }).click();
   await expect(page.getByText("Extended to 24h")).toBeVisible();
-  await c.getByRole("button", { name: "Pin" }).click();
+  await c.getByRole("button", { name: "Pin", exact: true }).click();
   await expect(page.getByText("Pinned", { exact: true })).toBeVisible();
   await expect(c.getByText("pinned", { exact: true })).toBeVisible();
-  await expect(c.getByRole("button", { name: "Pin" })).toHaveCount(0);
+  await expect(c.getByRole("button", { name: "Pin", exact: true })).toHaveCount(0);
+  await c.getByRole("button", { name: "Unpin", exact: true }).click();
+  await expect(page.getByText("Unpinned", { exact: true })).toBeVisible();
+  await expect(c.getByRole("button", { name: "Pin", exact: true })).toBeVisible();
   await c.getByRole("button", { name: "Copy link" }).click();
   await expect(page.getByText("Link copied")).toBeVisible();
 });

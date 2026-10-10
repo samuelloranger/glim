@@ -31,6 +31,8 @@ type Deps struct {
 	// "glim.example.com"). An Origin on that host is always same-origin, even
 	// when a reverse proxy rewrites Host and sends no X-Forwarded-Host.
 	PublicHost string
+	// DefaultTTL is the lifetime an unpinned preview gets; zero selects 6h.
+	DefaultTTL time.Duration
 	Logf       func(format string, args ...any)
 	// SSE timings; zero selects 25s keep-alive pings and 2s session checks.
 	PingEvery  time.Duration
@@ -55,6 +57,9 @@ func New(d Deps) *Server {
 	}
 	if d.Limiter == nil {
 		d.Limiter = auth.NewLimiter(nil)
+	}
+	if d.DefaultTTL == 0 {
+		d.DefaultTTL = 6 * time.Hour
 	}
 	if d.PingEvery == 0 {
 		d.PingEvery = 25 * time.Second
@@ -83,6 +88,7 @@ func (s *Server) routes() {
 	m.Handle("GET /_glim/api/previews", s.authed(s.getPreviews))
 	m.Handle("POST /_glim/api/previews/{name}/extend", s.authed(s.postExtend))
 	m.Handle("POST /_glim/api/previews/{name}/pin", s.authed(s.postPin))
+	m.Handle("POST /_glim/api/previews/{name}/unpin", s.authed(s.postUnpin))
 	m.Handle("DELETE /_glim/api/previews/{name}", s.authed(s.deletePreview))
 	m.Handle("GET /_glim/api/events", s.authed(s.getEvents))
 	m.Handle("GET /_glim/api/users", s.authed(s.getUsers))

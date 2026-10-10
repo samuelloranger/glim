@@ -141,10 +141,13 @@ visitor out. The dashboard shows a `locked` badge on locked previews, and you
 ```sh
 glim extend <name> <ttl>   # set a new lifetime measured from now, e.g. 48h
 glim pin <name>            # never expire until removed
+glim unpin <name>          # expire again after the default lifetime
 ```
 
 `pin` exempts a preview from TTL expiry and garbage collection; `glim ls` shows
-it as `pinned`. `extend` resets the expiry to `now + ttl`. A zero or negative ttl is rejected, so a preview is never created already expired.
+it as `pinned`. `unpin` makes it expire again at `now + the configured default
+ttl`. `extend` resets the expiry to `now + ttl`; on a pinned preview it also
+unpins it, because the lifetime you chose wins. A zero or negative ttl is rejected, so a preview is never created already expired.
 
 ## open
 
@@ -174,7 +177,7 @@ glim mcp
 ```
 
 Runs glim as an MCP server over stdio, exposing `present` (optionally with a `password`), `list`, `revoke`,
-`pin`, and `extend` tools. `list` includes each preview's view count and
+`pin` (pass `pinned: false` to unpin), and `extend` tools. Prefer an absolute `path` for `present` (a leading `~/` is expanded): a relative path resolves against the directory the MCP server was started in, which may not be the agent's current one. With no domain configured it starts the local server on demand. `list` includes each preview's view count and
 last-opened time (see [Dashboard](./dashboard.md#seen-indicator)). Normally you do not call this directly — `glim
 install` wires it into an agent.
 

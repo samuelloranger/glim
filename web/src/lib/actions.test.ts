@@ -32,12 +32,14 @@ function harness() {
   const pending = {
     pin: deferred<Preview>(),
     extend: deferred<Preview>(),
+    unpin: deferred<Preview>(),
     remove: deferred<void>(),
   };
   const actions = createActions({
     api: {
       pin: () => pending.pin.promise,
       extend: () => pending.extend.promise,
+      unpin: () => pending.unpin.promise,
       remove: () => pending.remove.promise,
     },
     live: { patch: (p) => calls.patch.push(p), drop: (n) => calls.drop.push(n) },
@@ -98,6 +100,47 @@ test("remove marks the card closing, then drops it", async () => {
     await done;
     expect(calls.drop).toEqual([base.name]);
     expect(calls.toasts).toEqual([[`Removed ${base.name}`, "info"]]);
+    dispose();
+  });
+});
+
+test("extending a pinned card unpins it right away and says so", async () => {
+  await createRoot(async (dispose) => {
+    const { actions, calls, pending } = harness();
+    const pinned = createMemo(() => actions.overrides[base.name]?.pinned);
+    flush();
+    pinned();
+    const done = actions.extend(base.name, "6h", "6h", true);
+    flush();
+    expect(pinned()).toBe(false);
+    pending.extend.resolve({ ...base, pinned: false, expires: "2026-01-01T07:00:00Z" });
+    await done;
+    expect(calls.patch[0]?.pinned).toBe(false);
+    expect(calls.toasts).toEqual([["Unpinned, expires in 6h", "info"]]);
+    dispose();
+  });
+});
+
+test("unpin patches the server's preview and confirms", async () => {
+  await createRoot(async (dispose) => {
+    const { actions, calls, pending } = harness();
+    const done = actions.unpin(base.name);
+    pending.unpin.resolve({ ...base, pinned: false, expires: "2026-01-01T07:00:00Z" });
+    await done;
+    expect(calls.patch[0]?.pinned).toBe(false);
+    expect(calls.toasts).toEqual([["Unpinned", "info"]]);
+    dispose();
+  });
+});
+
+test("failed unpin shows the server message", async () => {
+  await createRoot(async (dispose) => {
+    const { actions, calls, pending } = harness();
+    const done = actions.unpin(base.name);
+    pending.unpin.reject(new ApiError(404, "not_found", "That preview no longer exists."));
+    await done;
+    expect(calls.patch.length).toBe(0);
+    expect(calls.toasts).toEqual([["That preview no longer exists.", "error"]]);
     dispose();
   });
 });

@@ -49,6 +49,8 @@ func main() {
 		mustRun(cmdExtend(os.Args[2:]))
 	case "pin":
 		mustRun(cmdPin(os.Args[2:]))
+	case "unpin":
+		mustRun(cmdUnpin(os.Args[2:]))
 	case "lock":
 		mustRun(cmdLock(os.Args[2:]))
 	case "unlock":
@@ -283,6 +285,23 @@ func cmdPin(args []string) error {
 	return nil
 }
 
+func cmdUnpin(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: glim unpin <name>")
+	}
+	cfg := config.Load()
+	s := store.New(cfg.Root, cfg.BaseURL())
+	if err := s.Unpin(args[0], cfg.TTLDuration()); err != nil {
+		return err
+	}
+	m, err := s.Get(args[0])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("unpinned %s, now expires %s\n", args[0], m.Expires.Format(time.RFC1123))
+	return nil
+}
+
 func cmdLock(args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: glim lock <name>")
@@ -436,7 +455,13 @@ func cmdMCP() error {
 	cfg := config.Load()
 	s := store.New(cfg.Root, cfg.BaseURL())
 	s.OnRemove = forgetViews
-	return mcpserver.Run(context.Background(), s, cfg.TTLDuration(), version, viewStatsNow)
+	var ensureBase func() (string, error)
+	if cfg.Domain == "" {
+		// Without a domain the links point at a loopback server that nothing
+		// else starts, so bring it up on demand like `glim --local` does.
+		ensureBase = func() (string, error) { return ensureLocalServer(cfg) }
+	}
+	return mcpserver.Run(context.Background(), s, cfg.TTLDuration(), version, viewStatsNow, ensureBase)
 }
 
 func cmdServe(args []string) error {
@@ -489,6 +514,7 @@ func cmdServe(args []string) error {
 		SecureCookies: strings.HasPrefix(base, "https://"),
 		PublicHost:    publicHost(base),
 		Logf:          log.Printf,
+		DefaultTTL:    cfg.TTLDuration(),
 	})
 	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler(),
 		LiveReload: cfg.LiveReloadEnabled(),
@@ -583,6 +609,9 @@ func ensureLocalServer(cfg config.Config) (string, error) {
 	if err := cmd.Start(); err != nil {
 		return "", err
 	}
+	// Reap the child if it exits, so a long-lived glim mcp that restarts a
+	// dying server does not collect zombies.
+	go cmd.Wait()
 	for i := 0; i < 40; i++ {
 		if portOpen(port) {
 			return serve.BaseURL(port), nil
@@ -854,7 +883,8 @@ usage:
   glim config [--domain URL --port N ...]     show or set config
   glim caddy                                  print the reverse-proxy vhost
   glim ls | rm <name>... | gc                 manage previews
-  glim extend <name> <ttl> | pin <name>       change a preview's lifetime
+  glim extend <name> <ttl> | pin <name> | unpin <name>
+                                              change a preview's lifetime
   glim <entry> --password | lock <name> | unlock <name>
                                               password-protect a preview
   glim open <name> | status                   open a link / show instance status

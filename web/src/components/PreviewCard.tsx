@@ -17,6 +17,7 @@ export function PreviewCard(props: {
   arriving: boolean;
   onExtend: (ttl: string, label: string) => void;
   onPin: () => void;
+  onUnpin: () => void;
   onRemove: () => void;
   onCopy: () => void;
 }) {
@@ -97,9 +98,16 @@ export function PreviewCard(props: {
           Copy link
         </button>
         <ExtendMenu onPick={(ttl, label) => props.onExtend(ttl, label)} />
-        <Show when={!pinned()}>
-          <button class="btn quiet" type="button" onClick={() => props.onPin()}>
-            Pin
+        <Show
+          when={pinned()}
+          fallback={
+            <button class="btn quiet" type="button" onClick={() => props.onPin()}>
+              Pin
+            </button>
+          }
+        >
+          <button class="btn quiet" type="button" onClick={() => props.onUnpin()}>
+            Unpin
           </button>
         </Show>
         <button class="btn quiet danger" type="button" onClick={() => props.onRemove()}>

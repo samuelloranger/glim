@@ -416,8 +416,40 @@ func (s *Store) SetPasswordHash(name, hash string) error {
 	return writeManifest(dir, m)
 }
 
-// Extend replaces a live preview's expiry with now+ttl. An expired preview is
-// treated as gone even if GC has not removed it yet.
+// Unpin makes a pinned preview expire again, at now+ttl. Unpinning a preview
+// that is not pinned changes nothing. An expired unpinned preview is treated as
+// gone even if GC has not removed it yet.
+func (s *Store) Unpin(name string, ttl time.Duration) error {
+	if !ValidName(name) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	if err := ValidateTTL(ttl); err != nil {
+		return err
+	}
+	if ttl > MaxTTL {
+		return fmt.Errorf("ttl must be at most %s, got %s", MaxTTL, ttl)
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	dir := filepath.Join(s.Root, name)
+	m, err := readManifest(dir)
+	if err != nil || m.Expired(s.now()) {
+		return fmt.Errorf("no such preview: %s", name)
+	}
+	if !m.Pinned {
+		return nil
+	}
+	m.Pinned = false
+	m.Expires = s.now().Add(ttl)
+	return writeManifest(dir, m)
+}
+
+// Extend replaces a live preview's expiry with now+ttl. An explicit lifetime
+// wins over a pin, so extending a pinned preview unpins it. An expired preview
+// is treated as gone even if GC has not removed it yet.
 func (s *Store) Extend(name string, ttl time.Duration) error {
 	if !ValidName(name) {
 		return fmt.Errorf("no such preview: %s", name)
@@ -438,6 +470,7 @@ func (s *Store) Extend(name string, ttl time.Duration) error {
 	if err != nil || m.Expired(s.now()) {
 		return fmt.Errorf("no such preview: %s", name)
 	}
+	m.Pinned = false
 	m.Expires = s.now().Add(ttl)
 	return writeManifest(dir, m)
 }

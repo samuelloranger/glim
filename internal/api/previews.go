@@ -75,6 +75,19 @@ func (s *Server) postPin(w http.ResponseWriter, r *http.Request, _ auth.Session)
 	s.respondPreview(w, name)
 }
 
+func (s *Server) postUnpin(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	name, ok := s.livePreview(w, r)
+	if !ok {
+		return
+	}
+	// A configured default above the cap must not turn unpin into a 500.
+	if err := s.d.Store.Unpin(name, min(s.d.DefaultTTL, store.MaxTTL)); err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.respondPreview(w, name)
+}
+
 func (s *Server) deletePreview(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	name, ok := s.livePreview(w, r)
 	if !ok {

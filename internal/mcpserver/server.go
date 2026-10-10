@@ -3,6 +3,10 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -11,7 +15,7 @@ import (
 )
 
 type PresentInput struct {
-	Path     string `json:"path" jsonschema:"path to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
+	Path     string `json:"path" jsonschema:"absolute path (preferred; a leading ~/ is expanded, and a relative path resolves against the directory glim mcp was started in, which may not be your current one) to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
 	Title    string `json:"title,omitempty" jsonschema:"human title; becomes the readable link slug"`
 	Project  string `json:"project,omitempty" jsonschema:"project name, stored as metadata"`
 	TTL      string `json:"ttl,omitempty" jsonschema:"how long the link lives, e.g. 6h or 30m; default 6h"`
@@ -35,7 +39,8 @@ type PreviewInfo struct {
 	URL      string `json:"url"`
 	Title    string `json:"title,omitempty"`
 	Project  string `json:"project,omitempty"`
-	Expires  string `json:"expires" jsonschema:"RFC3339 expiry time"`
+	Pinned   bool   `json:"pinned" jsonschema:"true when the preview never expires; expires is then omitted"`
+	Expires  string `json:"expires,omitempty" jsonschema:"RFC3339 expiry time; omitted for pinned previews"`
 	Views    int64  `json:"views" jsonschema:"how many times the link was opened in a browser (bots, the owner and dashboard thumbnails excluded)"`
 	Locked   bool   `json:"locked,omitempty" jsonschema:"true when the preview is password-protected"`
 	LastSeen string `json:"lastSeen,omitempty" jsonschema:"RFC3339 time of the latest open; omitted if never opened"`
@@ -69,8 +74,11 @@ func listPreviews(s *store.Store, in ListInput, stats map[string]auth.ViewStat) 
 			URL:     s.URL(m.Name),
 			Title:   m.Title,
 			Project: m.Project,
-			Expires: m.Expires.Format(time.RFC3339),
+			Pinned:  m.Pinned,
 			Locked:  m.Locked(),
+		}
+		if !m.Pinned {
+			info.Expires = m.Expires.Format(time.RFC3339)
 		}
 		if v := stats[m.Name]; v.Count > 0 {
 			info.Views = v.Count
@@ -89,23 +97,78 @@ func revokePreview(s *store.Store, in RevokeInput) (RevokeOutput, error) {
 }
 
 type PinInput struct {
-	Name string `json:"name" jsonschema:"the preview slug to pin so it never expires"`
+	Name   string `json:"name" jsonschema:"the preview slug to pin so it never expires"`
+	Pinned *bool  `json:"pinned,omitempty" jsonschema:"default true. Pass false to unpin: the preview expires again after the default lifetime"`
 }
 
 type PinOutput struct {
-	Pinned string `json:"pinned" jsonschema:"the pinned preview slug"`
+	Pinned   string `json:"pinned,omitempty" jsonschema:"the pinned preview slug; omitted when unpinning"`
+	Unpinned string `json:"unpinned,omitempty" jsonschema:"the unpinned preview slug; omitted when pinning"`
+	Expires  string `json:"expires,omitempty" jsonschema:"RFC3339 expiry time after unpinning"`
 }
 
-func pinPreview(s *store.Store, in PinInput) (PinOutput, error) {
+// pinPreview pins the preview, or unpins it when in.Pinned is false, giving it
+// defaultTTL of life from now.
+func pinPreview(s *store.Store, defaultTTL time.Duration, in PinInput) (PinOutput, error) {
+	if in.Pinned != nil && !*in.Pinned {
+		if err := s.Unpin(in.Name, defaultTTL); err != nil {
+			return PinOutput{}, err
+		}
+		m, err := s.Get(in.Name)
+		if err != nil {
+			return PinOutput{}, err
+		}
+		return PinOutput{Unpinned: in.Name, Expires: m.Expires.Format(time.RFC3339)}, nil
+	}
 	if err := s.Pin(in.Name); err != nil {
 		return PinOutput{}, err
 	}
 	return PinOutput{Pinned: in.Name}, nil
 }
 
+// resolvePath expands a leading ~/. A relative path still resolves against
+// this server's working directory, which most clients set to the project, but
+// that need not be the agent's current directory, so relative reports it.
+func resolvePath(p string) (path string, relative bool, err error) {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", false, fmt.Errorf("cannot expand %s: %w", p, err)
+		}
+		return filepath.Join(home, strings.TrimPrefix(p, "~")), false, nil
+	}
+	return p, !filepath.IsAbs(p), nil
+}
+
+// presentPreview publishes in, first asking ensureBase (may be nil) for a base
+// URL that serves. If that fails the preview is still published and warning
+// says the returned link will not load yet.
+func presentPreview(s *store.Store, mu *sync.Mutex, defaultTTL time.Duration, ensureBase func() (string, error), in PresentInput) (res store.PublishResult, warning string, err error) {
+	// Starting the server can take a while; do it outside mu so list is not
+	// held up behind it.
+	base := ""
+	if ensureBase != nil {
+		var berr error
+		if base, berr = ensureBase(); berr != nil {
+			warning = fmt.Sprintf("Warning: could not start the local preview server (%v); this link will not load until `glim serve` is running.", berr)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if base != "" {
+		s.BaseURL = base
+	}
+	res, err = publishPreview(s, defaultTTL, in)
+	return res, warning, err
+}
+
 // publishPreview validates the ttl, whether explicit or the resolved default
 // (rejecting zero or negative lifetimes), and publishes the preview.
 func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (store.PublishResult, error) {
+	path, relative, err := resolvePath(in.Path)
+	if err != nil {
+		return store.PublishResult{}, err
+	}
 	ttl := defaultTTL
 	if in.TTL != "" {
 		d, err := store.ParseTTL(in.TTL)
@@ -124,7 +187,12 @@ func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (
 		}
 		hash = h
 	}
-	return s.PublishLocked(in.Path, in.Title, in.Project, "", ttl, in.Name, hash)
+	res, err := s.PublishLocked(path, in.Title, in.Project, "", ttl, in.Name, hash)
+	if err != nil && relative {
+		cwd, _ := os.Getwd()
+		err = fmt.Errorf("%w (relative path resolved against %s, where glim mcp runs; pass an absolute path)", err, cwd)
+	}
+	return res, err
 }
 
 func passwordErr(err error) error {
@@ -143,14 +211,19 @@ type ExtendInput struct {
 }
 
 type ExtendOutput struct {
-	Name    string `json:"name"`
-	Expires string `json:"expires" jsonschema:"RFC3339 expiry time"`
+	Name     string `json:"name"`
+	Expires  string `json:"expires" jsonschema:"RFC3339 expiry time"`
+	Unpinned bool   `json:"unpinned,omitempty" jsonschema:"true when the preview was pinned and extending it unpinned it"`
 }
 
 func extendPreview(s *store.Store, in ExtendInput) (ExtendOutput, error) {
 	d, err := store.ParseTTL(in.TTL)
 	if err != nil {
 		return ExtendOutput{}, err
+	}
+	wasPinned := false
+	if m, err := s.Get(in.Name); err == nil {
+		wasPinned = m.Pinned
 	}
 	if err := s.Extend(in.Name, d); err != nil {
 		return ExtendOutput{}, err
@@ -159,7 +232,7 @@ func extendPreview(s *store.Store, in ExtendInput) (ExtendOutput, error) {
 	if err != nil {
 		return ExtendOutput{}, err
 	}
-	return ExtendOutput{Name: in.Name, Expires: m.Expires.Format(time.RFC3339)}, nil
+	return ExtendOutput{Name: in.Name, Expires: m.Expires.Format(time.RFC3339), Unpinned: wasPinned && !m.Pinned}, nil
 }
 
 // boolPtr returns a pointer to b, so that DestructiveHint/OpenWorldHint (which
@@ -169,19 +242,27 @@ func extendPreview(s *store.Store, in ExtendInput) (ExtendOutput, error) {
 func boolPtr(b bool) *bool { return &b }
 
 // Run serves the MCP tools over stdio. views (may be nil) returns the current
-// per-preview view stats for the list tool.
-func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string, views func() map[string]auth.ViewStat) error {
+// per-preview view stats for the list tool. ensureBase (may be nil) is called
+// before each present to make sure the links it returns load, returning the
+// base URL to use; when it fails the preview is still published, with a
+// warning in the result.
+func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string, views func() map[string]auth.ViewStat, ensureBase func() (string, error)) error {
 	server := mcp.NewServer(&mcp.Implementation{Name: "glim", Version: version}, nil)
 
+	// mu guards s.BaseURL, which a present may update while list reads it.
+	var mu sync.Mutex
+
 	present := func(_ context.Context, _ *mcp.CallToolRequest, in PresentInput) (*mcp.CallToolResult, PresentOutput, error) {
-		res, err := publishPreview(s, defaultTTL, in)
+		res, warning, err := presentPreview(s, &mu, defaultTTL, ensureBase, in)
 		if err != nil {
 			return nil, PresentOutput{}, err
 		}
 		out := PresentOutput{URL: res.URL, Name: res.Name, Expires: res.Expires.Format(time.RFC3339), Locked: res.Locked}
-		result := &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Preview published. Give the user this link: " + res.URL}},
+		text := "Preview published. Give the user this link: " + res.URL
+		if warning != "" {
+			text += "\n" + warning
 		}
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
 		return result, out, nil
 	}
 
@@ -203,13 +284,18 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 		if views != nil {
 			stats = views()
 		}
+		mu.Lock()
 		out, err := listPreviews(s, in, stats)
+		mu.Unlock()
 		if err != nil {
 			return nil, ListOutput{}, err
 		}
 		text := fmt.Sprintf("%d live preview(s).", len(out.Previews))
 		for _, p := range out.Previews {
 			text += "\n" + p.Name + " — " + p.URL
+			if p.Pinned {
+				text += " (pinned)"
+			}
 			if p.Views > 0 {
 				text += fmt.Sprintf(" (opened %d×, last %s)", p.Views, p.LastSeen)
 			} else {
@@ -255,17 +341,21 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	}, revoke)
 
 	pin := func(_ context.Context, _ *mcp.CallToolRequest, in PinInput) (*mcp.CallToolResult, PinOutput, error) {
-		out, err := pinPreview(s, in)
+		out, err := pinPreview(s, defaultTTL, in)
 		if err != nil {
 			return nil, PinOutput{}, err
 		}
-		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Pinned preview " + out.Pinned + " (never expires)"}}}
+		text := "Pinned preview " + out.Pinned + " (never expires)"
+		if out.Unpinned != "" {
+			text = "Unpinned preview " + out.Unpinned + "; it now expires " + out.Expires
+		}
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
 		return result, out, nil
 	}
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "pin",
-		Description: "Pin a live preview by its slug so it never expires until explicitly revoked.",
+		Description: "Pin a live preview by its slug so it never expires until explicitly revoked. Pass pinned=false to unpin it, so it expires again after the default lifetime.",
 		// Modifies TTL, additive (not destructive); idempotent (re-pinning lands
 		// the same never-expires state); closed domain.
 		Annotations: &mcp.ToolAnnotations{
@@ -281,13 +371,17 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 		if err != nil {
 			return nil, ExtendOutput{}, err
 		}
-		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "Preview " + out.Name + " now expires " + out.Expires}}}
+		text := "Preview " + out.Name + " now expires " + out.Expires
+		if out.Unpinned {
+			text += " (it was pinned; extending unpinned it)"
+		}
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
 		return result, out, nil
 	}
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "extend",
-		Description: "Extend a live preview's lifetime, setting a new TTL measured from now.",
+		Description: "Extend a live preview's lifetime, setting a new TTL measured from now. On a pinned preview this unpins it: the chosen TTL replaces never-expires.",
 		// Modifies TTL, additive (not destructive); NOT idempotent (each call
 		// re-bases expiry on now, yielding a different expiry); closed domain.
 		Annotations: &mcp.ToolAnnotations{

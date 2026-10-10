@@ -25,6 +25,15 @@ test("mutations send JSON and the CSRF token", async () => {
   expect(call?.init.body).toBe(JSON.stringify({ ttl: "6h" }));
 });
 
+test("unpin posts to the unpin endpoint", async () => {
+  const f = fakeFetch(200, { name: "a", pinned: false });
+  const api = createApi(f.fn);
+  api.setCsrf("tok");
+  await api.unpin("diff-a1b2");
+  expect(f.calls[0]?.url).toBe("/_glim/api/previews/diff-a1b2/unpin");
+  expect(f.calls[0]?.init.method).toBe("POST");
+});
+
 test("errors become ApiError with server message and Retry-After", async () => {
   const f = fakeFetch(
     429,
