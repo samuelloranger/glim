@@ -107,6 +107,11 @@ func installCodex(d Deps) ([]string, error) {
 	return steps, nil
 }
 
+// cursorRuleBody is the full glim.mdc file for a given steering rule wording.
+func cursorRuleBody(rule string) string {
+	return "---\ndescription: Prefer glim for HTML and other visual previews\nalwaysApply: true\n---\n\n" + rule + "\n"
+}
+
 func installCursor(d Deps) ([]string, error) {
 	var steps []string
 
@@ -117,7 +122,7 @@ func installCursor(d Deps) ([]string, error) {
 	steps = append(steps, "registered glim MCP server in "+mcpPath)
 
 	rule := filepath.Join(d.Home, ".cursor", "rules", "glim.mdc")
-	body := "---\ndescription: Prefer glim for HTML and other visual previews\nalwaysApply: true\n---\n\n" + SteeringRule + "\n"
+	body := cursorRuleBody(SteeringRule)
 	if err := os.MkdirAll(filepath.Dir(rule), 0o755); err != nil {
 		return steps, err
 	}
