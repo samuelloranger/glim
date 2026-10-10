@@ -641,6 +641,20 @@ select {
   min-height: 36px;
 }
 
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  font-size: var(--step-0);
+}
+
+.toggle input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--iris);
+}
+
 .confirm-inline {
   display: flex;
   gap: 4px;

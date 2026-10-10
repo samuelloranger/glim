@@ -1,5 +1,6 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { api, errorText } from "../lib/api";
+import { browserPushEnv, disablePush, enablePush, type PushState, pushState } from "../lib/push";
 import type { Toasts } from "../lib/toasts";
 import type { User } from "../lib/types";
 import { ToastList } from "./Toasts";
@@ -22,6 +23,21 @@ export function AccountPanel(props: {
   const [newPass, setNewPass] = createSignal("");
   const [addError, setAddError] = createSignal("");
 
+  const pushEnv = browserPushEnv();
+  const [push, setPush] = createSignal<PushState | "checking">("checking");
+  const [pushBusy, setPushBusy] = createSignal(false);
+
+  async function togglePush() {
+    setPushBusy(true);
+    try {
+      setPush(push() === "on" ? await disablePush(pushEnv, api) : await enablePush(pushEnv, api));
+    } catch (e) {
+      props.toasts.show(errorText(e), "error");
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
   async function loadUsers() {
     try {
       setUsers((await api.users()).users);
@@ -37,6 +53,7 @@ export function AccountPanel(props: {
       if (open && !dialog.open) {
         dialog.showModal();
         void loadUsers();
+        void pushState(pushEnv).then(setPush);
       }
       if (!open && dialog.open) dialog.close();
     },
@@ -103,6 +120,35 @@ export function AccountPanel(props: {
       <button class="btn" type="button" onClick={() => props.onSignOut()}>
         Sign out
       </button>
+
+      <section class="panel-section" aria-labelledby="push-title">
+        <h3 id="push-title">Notifications</h3>
+        <Show
+          when={push() !== "unsupported"}
+          fallback={
+            <p class="help">
+              This browser can't receive push notifications. On iPhone, add glim to the Home Screen
+              first (Share, then Add to Home Screen), open it from there, and come back here.
+            </p>
+          }
+        >
+          <Show when={push() === "denied"}>
+            <p class="help">
+              Notifications are blocked for glim. Allow them in your browser or device settings,
+              then reload.
+            </p>
+          </Show>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              checked={push() === "on"}
+              disabled={pushBusy() || push() === "denied" || push() === "checking"}
+              onChange={() => void togglePush()}
+            />
+            <span>Notify me when a preview is published</span>
+          </label>
+        </Show>
+      </section>
 
       <section class="panel-section" aria-labelledby="pw-title">
         <h3 id="pw-title">Change password</h3>

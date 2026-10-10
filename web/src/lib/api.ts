@@ -77,6 +77,10 @@ export function createApi(fetchFn: typeof fetch = fetch) {
     addUser: (email: string, password: string) =>
       request<User>("POST", "/users", { email, password }),
     removeUser: (email: string) => request<void>("DELETE", `/users/${enc(email)}`),
+    pushKey: () => request<{ key: string }>("GET", "/push/key"),
+    pushSubscribe: (sub: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+      request<void>("POST", "/push/subscribe", sub),
+    pushUnsubscribe: (endpoint: string) => request<void>("POST", "/push/unsubscribe", { endpoint }),
     changePassword: (current: string, next: string) =>
       request<void>("POST", "/account/password", { current, next }),
   };

@@ -18,6 +18,8 @@ func TestHandler(t *testing.T) {
 	h := handler(fstest.MapFS{
 		"index.html":           {Data: []byte(`<div id="app"></div>`)},
 		"icon.svg":             {Data: []byte(`<svg/>`)},
+		"sw.js":                {Data: []byte(`self.addEventListener('push',()=>{})`)},
+		"manifest.webmanifest": {Data: []byte(`{}`)},
 		"assets/app-abc123.js": {Data: []byte(`console.log(1)`)},
 	})
 	root := get(h, "/")
@@ -34,6 +36,15 @@ func TestHandler(t *testing.T) {
 	}
 	if icon := get(h, "/_glim/icon.svg"); icon.Code != 200 || icon.Header().Get("Cache-Control") != "no-cache" {
 		t.Fatalf("icon = %d %v", icon.Code, icon.Header())
+	}
+	sw := get(h, "/_glim/sw.js")
+	if sw.Code != 200 || sw.Header().Get("Service-Worker-Allowed") != "/" ||
+		sw.Header().Get("Cache-Control") != "no-cache" || !strings.HasPrefix(sw.Header().Get("Content-Type"), "text/javascript") {
+		t.Fatalf("sw = %d %v", sw.Code, sw.Header())
+	}
+	mf := get(h, "/_glim/manifest.webmanifest")
+	if mf.Code != 200 || mf.Header().Get("Content-Type") != "application/manifest+json" || mf.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("manifest = %d %v", mf.Code, mf.Header())
 	}
 	for _, p := range []string{"/_glim/", "/_glim/assets/", "/_glim/index.html", "/_glim/nope.js", "/elsewhere"} {
 		if rec := get(h, p); rec.Code != 404 {
