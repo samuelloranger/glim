@@ -21,7 +21,7 @@ func TestExtendValidation(t *testing.T) {
 	s := e.signIn("sam@example.com")
 	name := publishPreview(t, e.st, "Ext", time.Hour)
 	path := "/_glim/api/previews/" + name + "/extend"
-	for _, ttl := range []string{"", "abc", "0s", "-1h", "8761h", "7d"} {
+	for _, ttl := range []string{"", "abc", "0s", "-1h", "8761h", "366d", "1.5d"} {
 		if rec := e.do(http.MethodPost, path, map[string]string{"ttl": ttl}, &s, nil); rec.Code != 400 {
 			t.Errorf("ttl %q = %d, want 400", ttl, rec.Code)
 		}
@@ -91,5 +91,14 @@ func TestPreviewSnapshotCarriesViews(t *testing.T) {
 	rec := e.do(http.MethodPost, "/_glim/api/previews/"+seen+"/pin", nil, &s, nil)
 	if jsonBody(t, rec)["views"] != float64(3) {
 		t.Fatalf("pin response = %s", rec.Body.String())
+	}
+}
+
+func TestExtendAcceptsDayUnit(t *testing.T) {
+	e := newEnv(t)
+	s := e.signIn("sam@example.com")
+	name := publishPreview(t, e.st, "Days", time.Hour)
+	if rec := e.do(http.MethodPost, "/_glim/api/previews/"+name+"/extend", map[string]string{"ttl": "3d"}, &s, nil); rec.Code != 200 {
+		t.Fatalf("ttl 3d = %d, want 200", rec.Code)
 	}
 }

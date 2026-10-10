@@ -1,6 +1,8 @@
 package config
 
 import (
+	"github.com/samuelloranger/glim/internal/store"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -102,7 +104,7 @@ func (c Config) BaseURL() string {
 }
 
 func (c Config) TTLDuration() time.Duration {
-	if d, err := time.ParseDuration(c.TTL); err == nil {
+	if d, err := store.ParseTTL(c.TTL); err == nil {
 		return d
 	}
 	return 6 * time.Hour

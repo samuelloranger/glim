@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/store"
@@ -52,9 +51,9 @@ func (s *Server) postExtend(w http.ResponseWriter, r *http.Request, _ auth.Sessi
 	if !decode(w, r, &body) {
 		return
 	}
-	ttl, err := time.ParseDuration(body.TTL)
-	if err != nil || ttl <= 0 || ttl > store.MaxTTL {
-		writeErr(w, http.StatusBadRequest, "invalid", "Choose a lifetime between 1s and 8760h, like 30m or 6h.")
+	ttl, err := store.ParseTTL(body.TTL)
+	if err != nil || ttl > store.MaxTTL {
+		writeErr(w, http.StatusBadRequest, "invalid", "Choose a lifetime between 1s and 8760h, like 30m, 6h or 3d.")
 		return
 	}
 	if err := s.d.Store.Extend(name, ttl); err != nil {

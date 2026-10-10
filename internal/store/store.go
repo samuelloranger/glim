@@ -492,12 +492,17 @@ func (s *Store) GC() (int, error) {
 // the slug lock so an extend, pin or republish that landed after the caller's
 // scan is not lost.
 func (s *Store) reapExpired(name string, now time.Time) bool {
+	dir := filepath.Join(s.Root, name)
+	// Most previews are live: check without the lock, which is store-wide, so
+	// a sweep does not make every publish, pin and extend queue behind it.
+	if m, err := readManifest(dir); err != nil || !m.Expired(now) {
+		return false
+	}
 	unlock, err := s.lockSlug(name)
 	if err != nil {
 		return false
 	}
 	defer unlock()
-	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
 	if err != nil || !m.Expired(now) {
 		return false
