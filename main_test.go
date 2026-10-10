@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -152,5 +154,57 @@ func TestExtendCmdRejectsNonPositiveTTL(t *testing.T) {
 		if err := cmdExtend([]string{"x", ttl}); err == nil || !strings.Contains(err.Error(), "ttl") {
 			t.Errorf("extend %s: err = %v", ttl, err)
 		}
+	}
+}
+
+func TestStageStdin(t *testing.T) {
+	cases := []struct{ format, in, wantFile, wantTitle string }{
+		{"", "<title>Hi There</title><p>x</p>", "index.html", "Hi There"},
+		{"md", "# My Doc\n\ntext", "my-doc.md", "My Doc"},
+		{"txt", "hello", "preview.txt", "preview"},
+		{"json", `{"a":1}`, "preview.json", "preview"},
+	}
+	for _, c := range cases {
+		entry, title, cleanup, err := stageStdin(strings.NewReader(c.in), c.format, "")
+		if err != nil {
+			t.Fatalf("%q: %v", c.format, err)
+		}
+		if filepath.Base(entry) != c.wantFile || title != c.wantTitle {
+			t.Errorf("%q: entry %s title %q", c.format, entry, title)
+		}
+		b, _ := os.ReadFile(entry)
+		if string(b) != c.in {
+			t.Errorf("%q: content %q", c.format, b)
+		}
+		cleanup()
+		if _, err := os.Stat(filepath.Dir(entry)); !os.IsNotExist(err) {
+			t.Errorf("%q: temp dir not removed", c.format)
+		}
+	}
+	_, title, cleanup, err := stageStdin(strings.NewReader("x"), "txt", "Given")
+	if err != nil || title != "Given" {
+		t.Errorf("explicit title lost: %q %v", title, err)
+	}
+	cleanup()
+}
+
+func TestStageStdinErrors(t *testing.T) {
+	if _, _, _, err := stageStdin(strings.NewReader(""), "", ""); err == nil {
+		t.Error("empty stdin should fail")
+	}
+	if _, _, _, err := stageStdin(strings.NewReader("x"), "pdf", ""); err == nil {
+		t.Error("bad format should fail")
+	}
+	if _, _, _, err := stageStdin(strings.NewReader(strings.Repeat("a", 20<<20+1)), "", ""); err == nil || !strings.Contains(err.Error(), "20 MB") {
+		t.Errorf("oversize err = %v", err)
+	}
+}
+
+func TestPublishFormatOnlyWithStdin(t *testing.T) {
+	if err := cmdPublish([]string{"page.html", "--format", "md"}); err == nil || !strings.Contains(err.Error(), "--format") {
+		t.Errorf("err = %v", err)
+	}
+	if err := cmdPublish([]string{"-", "--password"}); err == nil || !strings.Contains(err.Error(), "--password") {
+		t.Errorf("err = %v", err)
 	}
 }
