@@ -61,8 +61,15 @@ hr{border:0;border-top:1px solid var(--line)}
 .viewer img{max-width:100%;max-height:90vh;object-fit:contain}
 `
 
+// relURL escapes a file name for use as a relative URL. PathEscape leaves ":"
+// alone, so "a:b.md" would read as a URL with scheme "a:"; escaping it keeps
+// the reference a path.
+func relURL(name string) string {
+	return strings.ReplaceAll(url.PathEscape(name), ":", "%3A")
+}
+
 func rawLink(name string) string {
-	return fmt.Sprintf(`<p class="raw"><a href="%s">raw</a></p>`, html.EscapeString(url.PathEscape(name)))
+	return fmt.Sprintf(`<p class="raw"><a href="%s">raw</a></p>`, html.EscapeString(relURL(name)))
 }
 
 func page(title, body string) []byte {
@@ -77,6 +84,9 @@ func page(title, body string) []byte {
 // images data is ignored: the caller copies the image next to the page.
 func Convert(name string, data []byte, title string) ([]byte, error) {
 	name = filepath.Base(name)
+	// A UTF-8 byte order mark would otherwise hide the first heading from the
+	// Markdown parser and make encoding/json reject the document.
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	explicit := title != ""
 	if !explicit {
 		title = name
@@ -103,7 +113,7 @@ func Convert(name string, data []byte, title string) ([]byte, error) {
 		}
 		return page(title, `<main><pre class="wrap">`+html.EscapeString(buf.String())+"</pre>"+rawLink(name)+"</main>"), nil
 	case "image":
-		src := html.EscapeString(url.PathEscape(name))
+		src := html.EscapeString(relURL(name))
 		return page(title, `<div class="viewer"><img src="`+src+`" alt="`+html.EscapeString(name)+`">`+rawLink(name)+"</div>"), nil
 	}
 	return nil, fmt.Errorf("unsupported file type %q", filepath.Ext(name))
