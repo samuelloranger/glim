@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -40,7 +41,7 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "ls", "list":
-		mustRun(cmdList())
+		mustRun(cmdList(os.Args[2:]))
 	case "rm", "remove":
 		mustRun(cmdRemove(os.Args[2:]))
 	case "gc":
@@ -141,6 +142,10 @@ func cmdPublish(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *o.json {
+		// --json wins over --qr: stdout carries only the JSON object.
+		return writeJSON(os.Stdout, mcpserver.NewPresentOutput(res))
+	}
 	fmt.Println(res.URL)
 	fmt.Fprintf(os.Stderr, "expires %s\n", res.Expires.Format(time.RFC1123))
 	if *qr {
@@ -158,6 +163,7 @@ type publishFlags struct {
 	format               *string
 	ttl                  *time.Duration
 	local, qr, password  *bool
+	json                 *bool
 }
 
 // newPublishFlags defines every flag of the publish command. It is the single
@@ -171,6 +177,7 @@ func newPublishFlags(defaultTTL time.Duration) (*flag.FlagSet, publishFlags) {
 	o.local = fs.Bool("local", false, "auto-start the built-in server and use a localhost link")
 	o.qr = fs.Bool("qr", false, "also print a scannable QR code of the URL")
 	o.password = fs.Bool("password", false, "protect the preview with a password, read from a no-echo prompt (or one line of stdin when piped)")
+	o.json = fs.Bool("json", false, "print one JSON object (url, name, expires, locked) instead of the plain URL; suppresses --qr")
 	o.name = fs.String("name", "", "reuse this exact slug to update in place at the same URL (created if absent); omit for a fresh random link")
 	o.format = fs.String("format", "", "with entry -: how to read stdin, html (default), md, txt or json")
 	return fs, o
@@ -240,12 +247,40 @@ func splitEntry(args []string) (entry string, flagArgs []string) {
 	return entry, flagArgs
 }
 
-func cmdList() error {
+func writeJSON(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	return enc.Encode(v)
+}
+
+func cmdList(args []string) error {
+	fs := flag.NewFlagSet("ls", flag.ContinueOnError)
+	asJSON := fs.Bool("json", false, "print a JSON array of previews")
+	project := fs.String("project", "", "only previews with this project")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: glim ls [--project P] [--json]")
+	}
 	cfg := config.Load()
 	s := store.New(cfg.Root, cfg.BaseURL())
-	list, err := s.List()
+	if *asJSON {
+		out, err := mcpserver.ListPreviews(s, *project, viewStatsNow())
+		if err != nil {
+			return err
+		}
+		return writeJSON(os.Stdout, out.Previews)
+	}
+	all, err := s.List()
 	if err != nil {
 		return err
+	}
+	list := all[:0:0]
+	for _, m := range all {
+		if *project == "" || m.Project == *project {
+			list = append(list, m)
+		}
 	}
 	if len(list) == 0 {
 		fmt.Println("no live previews")
@@ -925,13 +960,14 @@ func usage() {
 	fmt.Fprint(os.Stderr, `glim — publish HTML previews and serve them behind a reverse proxy
 
 usage:
-  glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local] [--qr]
-                                              publish, print the URL
+  glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local] [--qr] [--json]
+                                              publish, print the URL (or JSON)
   glim - [--format html|md|txt|json] ...      same, reading the entry from stdin
   glim serve [--port N] [--root DIR]          run the preview server
   glim config [--domain URL --port N ...]     show or set config
   glim caddy                                  print the reverse-proxy vhost
-  glim ls | rm <name>... | gc                 manage previews
+  glim ls [--project P] [--json] | rm <name>... | gc
+                                              manage previews
   glim extend <name> <ttl> | pin <name> | unpin <name>
                                               change a preview's lifetime
   glim <entry> --password | lock <name> | unlock <name>

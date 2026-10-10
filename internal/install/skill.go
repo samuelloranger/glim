@@ -61,7 +61,7 @@ Use glim to show the user a preview of something you built.
 
 1. Create a self-contained HTML file or directory (or a .md, .txt, .json or image file).
 2. Publish it: ` + "`glim <entry> --title <title>`" + `. ` + "`<entry>`" + ` is the file or directory.
-3. Give the user the link glim prints.
+3. Give the user the link glim prints. For machine-readable output add ` + "`--json`" + ` (prints one JSON object with ` + "`url`" + ` and ` + "`name`" + `).
 
 To update a preview, republish to the same link with ` + "`--name <slug>`" + `. The link stays the
 same, and open tabs usually refresh by themselves (live reload, on by default).
