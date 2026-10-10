@@ -176,7 +176,7 @@ proxy that sends `X-Forwarded-Proto: https`.
 glim mcp
 ```
 
-Runs glim as an MCP server over stdio, exposing `present` (optionally with a `password`), `list`, `revoke`,
+Runs glim as an MCP server over stdio, exposing `present` (optionally with a `password`), `list`, `get` (inspect one preview, optionally with its published source), `revoke`,
 `pin` (pass `pinned: false` to unpin), and `extend` tools. Prefer an absolute `path` for `present` (a leading `~/` is expanded): a relative path resolves against the directory the MCP server was started in, which may not be the agent's current one. With no domain configured it starts the local server on demand. `list` includes each preview's view count and
 last-opened time (see [Dashboard](./dashboard.md#seen-indicator)). Normally you do not call this directly — `glim
 install` wires it into an agent.

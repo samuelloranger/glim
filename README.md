@@ -80,7 +80,7 @@ elapses; expired previews are pruned on the next command and by `glim gc`.
 ## Agent integration (MCP)
 
 `glim install <agent>` registers glim's MCP server (tools: `present`, `list`,
-`revoke`, `pin`, `extend`) and writes a steering rule so the agent prefers glim
+`get`, `revoke`, `pin`, `extend`) and writes a steering rule so the agent prefers glim
 for previews. Supported: Claude, Codex, Cursor. `glim install --skill <agent>`
 writes a `SKILL.md` instead (no MCP server), and `glim uninstall <agent>` removes
 either setup.
