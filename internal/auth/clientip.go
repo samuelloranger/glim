@@ -49,8 +49,11 @@ func ClientIP(r *http.Request) string {
 	}
 	// Every hop is a loopback or private address: the client is on a private
 	// network. The right-most hop was appended by the proxy that connected to
-	// us, so the client cannot choose it (it can only prepend); never take the
-	// left-most entry, which the client controls.
+	// us, so the client cannot choose it here; never take the left-most entry,
+	// which the client controls. A client on a private network can still
+	// prepend a public address that the loop above returns, because private
+	// hops are skipped as proxies; per-account backoff and the per-preview
+	// unlock cap bound what that buys.
 	if len(hops) > 0 {
 		return hops[len(hops)-1]
 	}

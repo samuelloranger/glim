@@ -72,7 +72,10 @@ Submitting the form `POST`s to the page's own path. A correct password sets a
 the server's secret, so changing or removing the password invalidates every
 earlier unlock. Attempts are rate-limited per client address and preview, and
 capped per preview regardless of client address (excess attempts are answered
-with `429` and `Retry-After`). Every response for a locked preview carries
+with `429` and `Retry-After`). The per-preview cap is a trade-off: someone who
+spends it with wrong guesses blocks password entry on that preview, for everyone,
+for up to 15 minutes. Visitors who already unlocked it and the signed-in owner
+are not affected. Every response for a locked preview carries
 `Cache-Control: private, no-store`. Unlock attempts
 never count as [views](./dashboard.md#seen-indicator), and a signed-in dashboard
 owner (the `glim_owner` cookie, valid only while their session is live)

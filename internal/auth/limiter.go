@@ -81,8 +81,10 @@ func (l *Limiter) Release(user, ip string) {
 			delete(l.users, user)
 		}
 	}
-	if fails := l.ips[ip]; ip != "" && len(fails) > 0 {
+	if fails := l.ips[ip]; ip != "" && len(fails) > 1 {
 		l.ips[ip] = fails[:len(fails)-1]
+	} else {
+		delete(l.ips, ip)
 	}
 }
 
