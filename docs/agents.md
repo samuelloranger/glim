@@ -104,7 +104,7 @@ Chrome:
 | Scripts, stylesheets, images and iframes from a CDN | work |
 | Web fonts from a CDN | not verified |
 | `fetch` to another site | no-CORS requests go through; reading the response needs that site to send CORS headers (cdnjs does) |
-| `fetch`/XHR of the preview's own files | fails (no CORS headers for an opaque origin): inline the data instead |
+| `fetch`/XHR of the preview's own files | works (glim answers `Origin: null` with CORS headers); not for password-protected previews: inline the data there |
 | Relative `<img>`, `<script>`, `<link>` | work |
 | `localStorage`, `sessionStorage`, `document.cookie` | throw `SecurityError` |
 | `indexedDB`, Cache API, service workers | throw `SecurityError` |

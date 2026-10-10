@@ -23,6 +23,11 @@ Previews run as an isolated (opaque) origin: scripts, forms, pop-ups and
 downloads work, but `localStorage`, `sessionStorage` and cookies are
 unavailable — code that touches them without a `try`/`catch` will throw.
 
+A request carrying `Origin: null` (a sandboxed page fetching its own files) gets
+`Access-Control-Allow-Origin: null` on successful responses, and a `GET`/`HEAD`
+preflight is answered with `204`; no other origin is allowed, credentials are
+never allowed, and password-protected previews send no CORS headers.
+
 Previews are kept out of search engines: every preview response carries
 `X-Robots-Tag: noindex, nofollow`, and `/robots.txt` serves `Disallow: /`.
 

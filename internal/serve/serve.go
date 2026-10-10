@@ -78,6 +78,22 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) ht
 				return
 			}
 		}
+		if !m.Locked() {
+			// Locked previews never get CORS headers: the unlock cookie is not
+			// sent from an opaque origin, and allowing credentials would let
+			// any sandboxed page elsewhere read locked content.
+			w.Header().Add("Vary", "Origin")
+			if r.Header.Get("Origin") == "null" {
+				if isCORSPreflight(r) {
+					h := w.Header()
+					h.Set("Access-Control-Allow-Origin", "null")
+					h.Set("Access-Control-Allow-Methods", "GET, HEAD")
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				w = &corsWriter{ResponseWriter: w}
+			}
+		}
 		if serveHTMLInjected(w, r, fsys, func(doc []byte) (string, string) {
 			now := time.Now()
 			if st.Now != nil {
@@ -95,6 +111,44 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) ht
 		}
 		files.ServeHTTP(w, r)
 	})
+}
+
+// isCORSPreflight reports whether r is a preflight from an opaque origin for a
+// method a preview serves.
+func isCORSPreflight(r *http.Request) bool {
+	if r.Method != http.MethodOptions {
+		return false
+	}
+	switch strings.ToUpper(r.Header.Get("Access-Control-Request-Method")) {
+	case http.MethodGet, http.MethodHead:
+		return true
+	}
+	return false
+}
+
+// corsWriter adds Access-Control-Allow-Origin: null to successful responses, so
+// a sandboxed (opaque-origin) preview page can fetch its own files. It never
+// sets Access-Control-Allow-Credentials.
+type corsWriter struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (c *corsWriter) WriteHeader(code int) {
+	if !c.wrote {
+		c.wrote = true
+		if (code >= 200 && code < 300) || code == http.StatusNotModified {
+			c.Header().Set("Access-Control-Allow-Origin", "null")
+		}
+	}
+	c.ResponseWriter.WriteHeader(code)
+}
+
+func (c *corsWriter) Write(b []byte) (int, error) {
+	if !c.wrote {
+		c.WriteHeader(http.StatusOK)
+	}
+	return c.ResponseWriter.Write(b)
 }
 
 func hasDotSegment(p string) bool {
