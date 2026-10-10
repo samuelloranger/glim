@@ -78,7 +78,7 @@ func getPreview(s *store.Store, in GetInput, stats map[string]auth.ViewStat) (Ge
 	}
 	dir := s.Dir(m.Name)
 	file := "index.html"
-	if m.Source != "" && filepath.Base(m.Source) == m.Source {
+	if sourceFileOK(m.Source) {
 		file = m.Source
 	} else {
 		out.Files, out.FilesTruncated = listFiles(dir)
@@ -105,13 +105,29 @@ func getPreview(s *store.Store, in GetInput, stats map[string]auth.ViewStat) (Ge
 	if len(data) > maxSourceBytes {
 		data = data[:maxSourceBytes]
 		out.Truncated = true
-		// Do not end on half a rune.
-		for len(data) > 0 && !utf8.Valid(data) {
+		// Do not end on half a rune: drop at most the bytes of one cut rune,
+		// so a file that is not UTF-8 at all is still returned.
+		for i := 0; i < utf8.UTFMax-1 && len(data) > 0 && !utf8.FullRune(data[lastRuneStart(data):]); i++ {
 			data = data[:len(data)-1]
 		}
 	}
 	out.Source = string(data)
 	return out, nil
+}
+
+// lastRuneStart returns the index of the byte that starts the last rune of b.
+func lastRuneStart(b []byte) int {
+	i := len(b) - 1
+	for i > 0 && len(b)-i < utf8.UTFMax && !utf8.RuneStart(b[i]) {
+		i--
+	}
+	return i
+}
+
+// sourceFileOK reports whether a manifest's source names a plain file of the
+// preview that get may return: never the manifest, its temp files or a path.
+func sourceFileOK(name string) bool {
+	return name != "" && filepath.Base(name) == name && !strings.HasPrefix(name, ".")
 }
 
 func isBinaryName(name string) bool {

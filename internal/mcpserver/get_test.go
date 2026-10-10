@@ -1,12 +1,14 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/store"
@@ -183,5 +185,43 @@ func TestPresentSummaryHasNameAndExpiry(t *testing.T) {
 	}
 	if got := presentSummary(store.PublishResult{Name: "x", Expires: exp, Pinned: true}); got != "name: x · pinned" {
 		t.Fatalf("pinned summary = %q", got)
+	}
+}
+
+func TestGetTruncatesNonUTF8SourceWithoutEmptyingIt(t *testing.T) {
+	s := newTestStore(t)
+	n := publishFile(t, s, "latin1.txt", strings.Repeat("caf\xe9 ", maxSourceBytes/4))
+	out, err := getPreview(s, GetInput{Name: n, IncludeSource: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Truncated || len(out.Source) < maxSourceBytes-utf8.UTFMax {
+		t.Fatalf("truncated=%v len=%d, want close to %d", out.Truncated, len(out.Source), maxSourceBytes)
+	}
+}
+
+func TestGetIgnoresManifestNamedAsSource(t *testing.T) {
+	s := newTestStore(t)
+	n := publishFile(t, s, "notes.md", "# Notes")
+	path := filepath.Join(s.Root, n, store.ManifestFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	raw["source"] = store.ManifestFile
+	data, _ = json.Marshal(raw)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := getPreview(s, GetInput{Name: n, IncludeSource: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.SourceFile != "index.html" || strings.Contains(out.Source, `"name"`) {
+		t.Fatalf("source file = %q, want index.html, not the manifest", out.SourceFile)
 	}
 }
