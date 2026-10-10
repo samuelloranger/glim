@@ -117,7 +117,7 @@ func TestRevokeMissing(t *testing.T) {
 func TestPinPreview(t *testing.T) {
 	s := newTestStore(t)
 	name := publish(t, s, "Keep", "", time.Hour)
-	out, err := pinPreview(s, PinInput{Name: name})
+	out, err := pinPreview(s, time.Hour, PinInput{Name: name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestPinPreview(t *testing.T) {
 	if !m.Pinned {
 		t.Fatal("manifest not pinned after pin")
 	}
-	if _, err := pinPreview(s, PinInput{Name: "nope-abcd"}); err == nil {
+	if _, err := pinPreview(s, time.Hour, PinInput{Name: "nope-abcd"}); err == nil {
 		t.Fatal("want error pinning missing preview")
 	}
 }

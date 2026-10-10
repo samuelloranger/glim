@@ -35,12 +35,18 @@ glim extend incident-notes-abcd 30m
 
 ```sh
 glim pin <name>
+glim unpin <name>
 ```
 
 `pin` makes a preview non-expiring. It remains available until an explicit
 `glim rm <name>` or MCP `revoke` removes it. The existing `expires` timestamp
 is retained as metadata, but does not control visibility or garbage collection
 while the preview is pinned.
+
+`unpin` makes a pinned preview expire again, at `now + the configured default
+ttl` (`ttl` in the config). Unpinning a preview that is not pinned changes
+nothing. The dashboard offers the same Unpin control, and the MCP `pin` tool
+takes `pinned: false`.
 
 `glim ls` displays `pinned` in the expiry column for pinned previews, and
 `glim status` includes their count.
@@ -50,12 +56,12 @@ while the preview is pinned.
 The stdio MCP server exposes the same operations:
 
 ```text
-pin({ name }) -> { pinned }
+pin({ name, pinned? }) -> { pinned } | { unpinned, expires }
 extend({ name, ttl }) -> { name, expires }
 ```
 
 `name` is the preview slug. `ttl` is a Go duration string, optionally with a leading `Nd` day unit. `extend.expires` is
-an RFC 3339 timestamp; `pin.pinned` echoes the pinned slug.
+an RFC 3339 timestamp; `pin.pinned` echoes the pinned slug; with `pinned: false` the result is `unpinned` (the slug) and the new `expires`. `extend.unpinned` is `true` when the preview was pinned. MCP `list` reports `pinned` for each preview and omits `expires` for pinned ones.
 
 ## Persistence and expiry rules
 
@@ -74,9 +80,10 @@ only after the current time has passed its stored expiry timestamp. Publishing
 also runs garbage collection, so expired unpinned previews may be pruned during
 later publishes.
 
-Calling `extend` on a pinned preview updates the stored expiry but leaves it
-pinned. There is intentionally no `unpin` operation; remove and republish when
-a temporary preview is wanted again.
+Calling `extend` on a pinned preview unpins it and sets the new expiry: the
+lifetime you explicitly chose wins over the pin, in the CLI, the MCP tool and
+the dashboard alike. Use `unpin` to make a pinned preview expire again after the
+default lifetime instead.
 
 ## Errors and boundaries
 

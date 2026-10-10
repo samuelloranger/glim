@@ -75,6 +75,18 @@ func (s *Server) postPin(w http.ResponseWriter, r *http.Request, _ auth.Session)
 	s.respondPreview(w, name)
 }
 
+func (s *Server) postUnpin(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	name, ok := s.livePreview(w, r)
+	if !ok {
+		return
+	}
+	if err := s.d.Store.Unpin(name, s.d.DefaultTTL); err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.respondPreview(w, name)
+}
+
 func (s *Server) deletePreview(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	name, ok := s.livePreview(w, r)
 	if !ok {
