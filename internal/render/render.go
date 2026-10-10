@@ -120,6 +120,13 @@ func Convert(name string, data []byte, title string) ([]byte, error) {
 }
 
 // firstH1 returns the plain text of the first level-1 heading, or "".
+// MarkdownTitle returns the text of the first level-1 heading of a Markdown
+// document, parsed the way Convert parses it (so a "#" line inside a code
+// block is not a heading), or "" when there is none.
+func MarkdownTitle(src []byte) string {
+	return firstH1(goldmark.New(goldmark.WithExtensions(extension.GFM)), bytes.TrimPrefix(src, []byte("\xef\xbb\xbf")))
+}
+
 func firstH1(md goldmark.Markdown, src []byte) string {
 	doc := md.Parser().Parse(text.NewReader(src))
 	var out string

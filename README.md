@@ -56,7 +56,7 @@ email and password, so do that before exposing the server. See
 ## Commands
 
 ```
-glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr]  publish, print URL
+glim <entry.html|dir|-> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr]  publish, print URL (`-` reads stdin)
 glim serve [--bind ADDR] [--port N] [--root DIR]                       run the preview server
 glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h --live-reload true|false]  show or set config
 glim caddy                                                             print a reverse-proxy vhost

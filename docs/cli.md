@@ -3,11 +3,29 @@
 ## publish
 
 ```sh
-glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local] [--qr]
+glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local] [--qr]
 ```
 
 Copies `entry` into a new preview and prints its URL. A single file is served as
 `index.html`; a directory is copied and must contain its own `index.html`.
+
+### Publishing from stdin
+
+With `-` as the entry, glim reads the page from stdin, so nothing has to be
+written to disk first:
+
+```sh
+echo '# Release notes' | glim - --format md --title "Notes"
+./report.sh | glim - --format txt
+```
+
+`--format` is `html` (the default, which must be self-contained), `md`, `txt` or
+`json`, converted exactly like a file of that type. It is only valid with `-`.
+Input is capped at 20 MB and must not be empty. Without `--title`, glim uses the
+first `<title>` (html) or heading (md), else `preview`. `--password` cannot be
+combined with `-`, since the prompt would read the same stdin; use `glim lock`
+afterwards. The same applies through MCP with the `present` tool's `content`
+argument.
 
 ### Single-file formats
 

@@ -94,7 +94,30 @@ func cmdPublish(args []string) error {
 		return err
 	}
 	if entry == "" || fs.NArg() != 0 {
-		return fmt.Errorf("usage: glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local]")
+		return fmt.Errorf("usage: glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local]")
+	}
+	if *o.format != "" && entry != "-" {
+		return fmt.Errorf("--format only applies when reading the entry from stdin (glim -)")
+	}
+	if entry == "-" && *o.password {
+		return fmt.Errorf("--password cannot be combined with reading the entry from stdin")
+	}
+	if entry == "-" {
+		stored := ""
+		if *name != "" {
+			if m, err := store.New(cfg.Root, cfg.BaseURL()).Get(*name); err == nil {
+				stored = m.Title
+			}
+		}
+		if term.IsTerminal(int(os.Stdin.Fd())) {
+			fmt.Fprintln(os.Stderr, "reading the page from stdin; end with Ctrl-D")
+		}
+		staged, t, cleanup, err := stageStdin(os.Stdin, *o.format, *title, stored)
+		defer cleanup()
+		if err != nil {
+			return err
+		}
+		entry, *title = staged, t
 	}
 	passwordHash := ""
 	if *o.password {
@@ -132,6 +155,7 @@ func writeQR(w io.Writer, url string) {
 
 type publishFlags struct {
 	title, project, name *string
+	format               *string
 	ttl                  *time.Duration
 	local, qr, password  *bool
 }
@@ -148,7 +172,31 @@ func newPublishFlags(defaultTTL time.Duration) (*flag.FlagSet, publishFlags) {
 	o.qr = fs.Bool("qr", false, "also print a scannable QR code of the URL")
 	o.password = fs.Bool("password", false, "protect the preview with a password, read from a no-echo prompt (or one line of stdin when piped)")
 	o.name = fs.String("name", "", "reuse this exact slug to update in place at the same URL (created if absent); omit for a fresh random link")
+	o.format = fs.String("format", "", "with entry -: how to read stdin, html (default), md, txt or json")
 	return fs, o
+}
+
+// stageStdin reads the entry from r (capped at store.MaxInlineBytes) into a
+// private temp dir, as a file named for format. title falls back to one taken
+// from the content, then stored (the title of the preview being republished).
+// cleanup is always non-nil and removes the temp dir.
+func stageStdin(r io.Reader, format, title, stored string) (entry, newTitle string, cleanup func(), err error) {
+	noop := func() {}
+	if format, err = store.NormalizeInlineFormat(format); err != nil {
+		return "", "", noop, err
+	}
+	data, err := io.ReadAll(io.LimitReader(r, store.MaxInlineBytes+1))
+	if err != nil {
+		return "", "", noop, fmt.Errorf("reading stdin: %w", err)
+	}
+	if len(data) == 0 {
+		return "", "", noop, fmt.Errorf("stdin is empty: nothing to publish")
+	}
+	if title == "" {
+		title = store.InlineTitle(string(data), format, stored)
+	}
+	entry, cleanup, err = store.StageInline(string(data), format, title)
+	return entry, title, cleanup, err
 }
 
 // valueFlagNames returns the flags of fs that consume a following argument,
@@ -879,6 +927,7 @@ func usage() {
 usage:
   glim <entry.html|dir> [--title T] [--project P] [--ttl 6h] [--local] [--qr]
                                               publish, print the URL
+  glim - [--format html|md|txt|json] ...      same, reading the entry from stdin
   glim serve [--port N] [--root DIR]          run the preview server
   glim config [--domain URL --port N ...]     show or set config
   glim caddy                                  print the reverse-proxy vhost

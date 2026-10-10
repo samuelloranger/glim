@@ -61,11 +61,20 @@ other MCP servers are left untouched. Re-running prints `nothing to remove`.
 ## The present tool
 
 ```
-present(path, title?, project?, ttl?, name?, password?) → { url, name, expires, locked? }
+present(path | content, format?, title?, project?, ttl?, name?, password?) → { url, name, expires, locked? }
 ```
 
 The agent writes a self-contained HTML file or directory, calls `present`, and
-gives you the returned `url`. It is the same URL the CLI prints, built from your
+gives you the returned `url`.
+
+To skip the file, the agent passes the page text as `content` instead of `path`
+(exactly one of the two is required). `format` says how to read it: `html`
+(the default, which must be self-contained), `md`, `txt` or `json`, converted
+the same way as a file of that type. Content is capped at 20 MB. Without a
+`title`, glim uses the first `<title>` (html) or heading (md), else `preview`.
+Everything else (`name`, `ttl`, `password`, locking) behaves as for a file.
+
+Either way, the returned `url` is the same one the CLI prints, built from your
 [configured domain](/config), so it resolves wherever your server is reachable.
 
 To push an **update** to the same URL instead of minting a new one, the agent
