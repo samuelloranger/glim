@@ -25,6 +25,13 @@ next to `index.html` under its own name, and the page links to it as `raw`.
 
 Converted text formats are limited to 20 MB.
 
+When a single Markdown or HTML file references local files with relative
+`src`/`href` paths (for example `![](shot.png)` or `[data](data.csv)`), glim also
+copies those files, and only those, next to the page. Only regular files inside
+the published file's own folder are copied: no `..` escapes, absolute paths,
+symlinks, hidden names or directories, and files over 25 MB (100 MB in total)
+are skipped silently.
+
 Publishing is deliberately conservative so you cannot expose files by accident:
 
 - The entry must not be a symlink or have a name starting with `.`.
