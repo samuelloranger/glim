@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -80,14 +81,19 @@ func TestExtendPinnedPreviewUnpins(t *testing.T) {
 	}
 }
 
-func TestPresentRejectsRelativePath(t *testing.T) {
-	s := newTestStore(t)
-	_, err := publishPreview(s, time.Hour, PresentInput{Path: "out/page.html"})
-	if err == nil || !strings.Contains(err.Error(), "path must be absolute: out/page.html; glim mcp runs in ") {
-		t.Fatalf("err = %v, want absolute-path error", err)
+func TestPresentRelativePathNamesServerDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "page.html"), []byte("<h1>hi</h1>"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if list, _ := s.List(); len(list) != 0 {
-		t.Fatalf("rejected path must not create previews, got %d", len(list))
+	t.Chdir(dir)
+	s := newTestStore(t)
+	if _, err := publishPreview(s, time.Hour, PresentInput{Path: "page.html"}); err != nil {
+		t.Fatalf("relative path in the server's directory failed: %v", err)
+	}
+	_, err := publishPreview(s, time.Hour, PresentInput{Path: "out/missing.html"})
+	if err == nil || !strings.Contains(err.Error(), "relative path resolved against "+dir) {
+		t.Fatalf("err = %v, want the server directory named", err)
 	}
 }
 
@@ -109,7 +115,7 @@ func TestPresentPreviewWarnsWhenServerWillNotStart(t *testing.T) {
 	if err := os.WriteFile(p, []byte("<h1>hi</h1>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	res, warning, err := presentPreview(s, time.Hour, func() (string, error) { return "", errors.New("boom") }, PresentInput{Path: p})
+	res, warning, err := presentPreview(s, &sync.Mutex{}, time.Hour, func() (string, error) { return "", errors.New("boom") }, PresentInput{Path: p})
 	if err != nil || res.Name == "" {
 		t.Fatalf("publish should still succeed: %v", err)
 	}
@@ -124,7 +130,7 @@ func TestPresentPreviewUsesEnsuredBase(t *testing.T) {
 	if err := os.WriteFile(p, []byte("<h1>hi</h1>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	res, warning, err := presentPreview(s, time.Hour, func() (string, error) { return "http://127.0.0.1:4242", nil }, PresentInput{Path: p})
+	res, warning, err := presentPreview(s, &sync.Mutex{}, time.Hour, func() (string, error) { return "http://127.0.0.1:4242", nil }, PresentInput{Path: p})
 	if err != nil || warning != "" {
 		t.Fatalf("err %v warning %q", err, warning)
 	}

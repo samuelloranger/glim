@@ -80,7 +80,8 @@ func (s *Server) postUnpin(w http.ResponseWriter, r *http.Request, _ auth.Sessio
 	if !ok {
 		return
 	}
-	if err := s.d.Store.Unpin(name, s.d.DefaultTTL); err != nil {
+	// A configured default above the cap must not turn unpin into a 500.
+	if err := s.d.Store.Unpin(name, min(s.d.DefaultTTL, store.MaxTTL)); err != nil {
 		s.internal(w, err)
 		return
 	}

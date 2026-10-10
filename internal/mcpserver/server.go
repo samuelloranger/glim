@@ -15,7 +15,7 @@ import (
 )
 
 type PresentInput struct {
-	Path     string `json:"path" jsonschema:"absolute path (a leading ~/ is expanded; relative paths are rejected because this server does not share your working directory) to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
+	Path     string `json:"path" jsonschema:"absolute path (preferred; a leading ~/ is expanded, and a relative path resolves against the directory glim mcp was started in, which may not be your current one) to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
 	Title    string `json:"title,omitempty" jsonschema:"human title; becomes the readable link slug"`
 	Project  string `json:"project,omitempty" jsonschema:"project name, stored as metadata"`
 	TTL      string `json:"ttl,omitempty" jsonschema:"how long the link lives, e.g. 6h or 30m; default 6h"`
@@ -126,34 +126,37 @@ func pinPreview(s *store.Store, defaultTTL time.Duration, in PinInput) (PinOutpu
 	return PinOutput{Pinned: in.Name}, nil
 }
 
-// resolvePath expands a leading ~/ and requires an absolute path. The MCP
-// server's working directory is not the agent's, so a relative path would
-// silently resolve against the wrong tree.
-func resolvePath(p string) (string, error) {
+// resolvePath expands a leading ~/. A relative path still resolves against
+// this server's working directory, which most clients set to the project, but
+// that need not be the agent's current directory, so relative reports it.
+func resolvePath(p string) (path string, relative bool, err error) {
 	if p == "~" || strings.HasPrefix(p, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("cannot expand %s: %w", p, err)
+			return "", false, fmt.Errorf("cannot expand %s: %w", p, err)
 		}
-		p = filepath.Join(home, strings.TrimPrefix(p, "~"))
+		return filepath.Join(home, strings.TrimPrefix(p, "~")), false, nil
 	}
-	if !filepath.IsAbs(p) {
-		cwd, _ := os.Getwd()
-		return "", fmt.Errorf("path must be absolute: %s; glim mcp runs in %s", p, cwd)
-	}
-	return p, nil
+	return p, !filepath.IsAbs(p), nil
 }
 
 // presentPreview publishes in, first asking ensureBase (may be nil) for a base
 // URL that serves. If that fails the preview is still published and warning
 // says the returned link will not load yet.
-func presentPreview(s *store.Store, defaultTTL time.Duration, ensureBase func() (string, error), in PresentInput) (res store.PublishResult, warning string, err error) {
+func presentPreview(s *store.Store, mu *sync.Mutex, defaultTTL time.Duration, ensureBase func() (string, error), in PresentInput) (res store.PublishResult, warning string, err error) {
+	// Starting the server can take a while; do it outside mu so list is not
+	// held up behind it.
+	base := ""
 	if ensureBase != nil {
-		if base, berr := ensureBase(); berr != nil {
+		var berr error
+		if base, berr = ensureBase(); berr != nil {
 			warning = fmt.Sprintf("Warning: could not start the local preview server (%v); this link will not load until `glim serve` is running.", berr)
-		} else {
-			s.BaseURL = base
 		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if base != "" {
+		s.BaseURL = base
 	}
 	res, err = publishPreview(s, defaultTTL, in)
 	return res, warning, err
@@ -162,7 +165,7 @@ func presentPreview(s *store.Store, defaultTTL time.Duration, ensureBase func() 
 // publishPreview validates the ttl, whether explicit or the resolved default
 // (rejecting zero or negative lifetimes), and publishes the preview.
 func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (store.PublishResult, error) {
-	path, err := resolvePath(in.Path)
+	path, relative, err := resolvePath(in.Path)
 	if err != nil {
 		return store.PublishResult{}, err
 	}
@@ -184,7 +187,12 @@ func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (
 		}
 		hash = h
 	}
-	return s.PublishLocked(path, in.Title, in.Project, "", ttl, in.Name, hash)
+	res, err := s.PublishLocked(path, in.Title, in.Project, "", ttl, in.Name, hash)
+	if err != nil && relative {
+		cwd, _ := os.Getwd()
+		err = fmt.Errorf("%w (relative path resolved against %s, where glim mcp runs; pass an absolute path)", err, cwd)
+	}
+	return res, err
 }
 
 func passwordErr(err error) error {
@@ -245,9 +253,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 	var mu sync.Mutex
 
 	present := func(_ context.Context, _ *mcp.CallToolRequest, in PresentInput) (*mcp.CallToolResult, PresentOutput, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		res, warning, err := presentPreview(s, defaultTTL, ensureBase, in)
+		res, warning, err := presentPreview(s, &mu, defaultTTL, ensureBase, in)
 		if err != nil {
 			return nil, PresentOutput{}, err
 		}

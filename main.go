@@ -609,6 +609,9 @@ func ensureLocalServer(cfg config.Config) (string, error) {
 	if err := cmd.Start(); err != nil {
 		return "", err
 	}
+	// Reap the child if it exits, so a long-lived glim mcp that restarts a
+	// dying server does not collect zombies.
+	go cmd.Wait()
 	for i := 0; i < 40; i++ {
 		if portOpen(port) {
 			return serve.BaseURL(port), nil
