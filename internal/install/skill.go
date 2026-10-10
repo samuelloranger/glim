@@ -5,7 +5,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// legacySkillTexts are earlier SKILL.md bodies glim wrote. They are still
+// recognised as glim's own so uninstall can remove them.
+var legacySkillTexts = []string{`---
+name: glim
+description: Show the user an HTML, Markdown, text, JSON or image preview via a short-lived link. Use when a coding task benefits from a visual preview.
+---
+
+# glim
+
+Use glim to show the user a preview of something you built.
+
+1. Create a self-contained HTML file or directory (or a .md, .txt, .json or image file).
+2. Publish it: ` + "`glim <entry> --title <title>`" + `. ` + "`<entry>`" + ` is the file or directory.
+3. Give the user the link glim prints.
+
+To update a preview, republish to the same link with ` + "`--name <slug>`" + `.
+
+Previews expire automatically. Remove one early with ` + "`glim rm <name>`" + `.
+`}
 
 // SkillText is the SKILL.md written by `glim install --skill`.
 const SkillText = `---
@@ -98,14 +119,28 @@ func Uninstall(target string, d Deps) ([]string, error) {
 		}
 	case "cursor":
 		mcpPath := filepath.Join(d.Home, ".cursor", "mcp.json")
-		ok, err := removeCursorMCP(mcpPath, "glim")
-		add(ok, "glim MCP server in "+mcpPath)
+		ok, foreignMCP, err := removeCursorMCP(mcpPath, "glim")
+		if foreignMCP {
+			steps = append(steps, "left the glim entry in "+mcpPath+" in place: it is not an entry glim wrote")
+		} else {
+			add(ok, "glim MCP server in "+mcpPath)
+		}
 		if err != nil {
 			return steps, err
 		}
 		rule := filepath.Join(d.Home, ".cursor", "rules", "glim.mdc")
-		ok, err = removeFile(rule)
-		add(ok, "steering rule "+rule)
+		var owned []string
+		for _, desc := range append([]string{cursorRuleDescription}, legacyCursorRuleDescriptions...) {
+			for _, r := range append([]string{SteeringRule}, legacySteeringRules...) {
+				owned = append(owned, cursorRuleBody(desc, r))
+			}
+		}
+		ok, foreignRule, err := removeOwnedFile(rule, owned)
+		if foreignRule {
+			steps = append(steps, "left "+rule+" in place: it is not a rule glim wrote")
+		} else {
+			add(ok, "steering rule "+rule)
+		}
 		if err != nil {
 			return steps, err
 		}
@@ -113,15 +148,54 @@ func Uninstall(target string, d Deps) ([]string, error) {
 		return nil, fmt.Errorf("unknown target %q (want claude|codex|cursor)", target)
 	}
 	dir, _ := skillDir(target, d)
-	ok, err := removeFile(filepath.Join(dir, "SKILL.md"))
+	skill := filepath.Join(dir, "SKILL.md")
+	ok, foreign, err := removeOwnedFile(skill, append([]string{SkillText}, legacySkillTexts...))
 	if err == nil && ok {
 		// Only prune a real, empty directory; never unlink a symlinked skill dir.
 		if fi, lerr := os.Lstat(dir); lerr == nil && fi.IsDir() {
 			os.Remove(dir) // only succeeds when empty; never touches foreign files
 		}
 	}
-	add(ok, "skill in "+dir)
+	if foreign {
+		steps = append(steps, "left "+skill+" in place: it is not a skill glim wrote")
+	} else {
+		add(ok, "skill in "+dir)
+	}
 	return steps, err
+}
+
+// removeOwnedFile deletes path only when its whole content equals one of the
+// texts glim has written there (ignoring CRLF line endings). A file with any
+// other content is the user's: it is left alone and foreign is true.
+func removeOwnedFile(path string, owned []string) (removed, foreign bool, err error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	got := strings.ReplaceAll(string(data), "\r\n", "\n")
+	for _, o := range owned {
+		if got == o {
+			removed, err = removeFile(path)
+			return removed, false, err
+		}
+	}
+	return false, true, nil
+}
+
+// isGlimCursorEntry reports whether a mcpServers entry has the shape glim
+// registers: exactly {command, args: ["mcp"]}.
+func isGlimCursorEntry(m map[string]any) bool {
+	if len(m) != 2 {
+		return false
+	}
+	if _, ok := m["command"].(string); !ok {
+		return false
+	}
+	args, _ := m["args"].([]any)
+	return len(args) == 1 && args[0] == "mcp"
 }
 
 func removeFile(path string) (bool, error) {
@@ -132,26 +206,33 @@ func removeFile(path string) (bool, error) {
 	return err == nil, err
 }
 
-func removeCursorMCP(path, name string) (bool, error) {
+// removeCursorMCP removes the glim server entry, but only when it has the
+// shape glim registers; any other entry named glim is the user's own, is left
+// in place and reported through foreign.
+func removeCursorMCP(path, name string) (removed, foreign bool, err error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) || (err == nil && len(data) == 0) {
-		return false, nil
+		return false, false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	root := map[string]any{}
 	if err := json.Unmarshal(data, &root); err != nil {
-		return false, fmt.Errorf("existing %s is not valid JSON: %w", path, err)
+		return false, false, fmt.Errorf("existing %s is not valid JSON: %w", path, err)
 	}
 	servers, _ := root["mcpServers"].(map[string]any)
-	if _, ok := servers[name]; !ok {
-		return false, nil
+	entry, ok := servers[name]
+	if !ok {
+		return false, false, nil
+	}
+	if m, _ := entry.(map[string]any); !isGlimCursorEntry(m) {
+		return false, true, nil
 	}
 	delete(servers, name)
 	out, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	return true, os.WriteFile(path, append(out, '\n'), 0o644)
+	return true, false, os.WriteFile(path, append(out, '\n'), 0o644)
 }

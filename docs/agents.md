@@ -25,7 +25,10 @@ For each agent it does two things:
 | Cursor | `~/.cursor/mcp.json` | `~/.cursor/rules/glim.mdc` |
 
 The rule and config blocks are marked as managed, so re-running `install` updates
-them in place instead of duplicating.
+them in place instead of duplicating. If `~/.codex/config.toml` already has its
+own `[mcp_servers.glim]` table (for example from `codex mcp add glim`), install
+adopts it into the managed block, keeping its extra keys, and `glim uninstall
+codex` then removes those keys along with the block.
 
 ## Skill mode
 
