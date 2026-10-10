@@ -11,7 +11,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || "",
-      icon: "/_glim/icon-192.png",
+      icon: "/_glim/icon-192.png?v=2",
       data: { url: data.url || "/" },
     }),
   );
