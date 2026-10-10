@@ -61,7 +61,7 @@ notification when a preview is published; see
 ```
 glim <entry.html|dir|-> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr] [--json]  publish, print URL or JSON (`-` reads stdin)
 glim serve [--bind ADDR] [--port N] [--root DIR]                       run the preview server
-glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h --live-reload true|false --self-fetch true|false]  show or set config
+glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h --live-reload true|false --self-fetch true|false --header true|false]  show or set config
 glim caddy                                                             print a reverse-proxy vhost
 glim ls [--project P] [--json] | rm <name>... | gc                      manage previews
 glim extend <name> <ttl> | pin <name> | unpin <name>                  change a preview's lifetime

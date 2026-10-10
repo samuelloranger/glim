@@ -55,3 +55,20 @@ func TestRepublishKeepsOrReplacesPasswordHash(t *testing.T) {
 		t.Fatal("want error for missing preview")
 	}
 }
+
+func TestNoHeaderIsNotSticky(t *testing.T) {
+	s := newTestStore(t)
+	entry := writeTemp(t, "p.html", "<h1>x</h1>")
+	if _, err := s.PublishFull(entry, "", "", "", time.Hour, "hdr-me", "", true); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.Get("hdr-me"); !m.NoHeader {
+		t.Fatal("no_header not stored")
+	}
+	if _, err := s.Publish(entry, "", "", "", time.Hour, "hdr-me"); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.Get("hdr-me"); m.NoHeader {
+		t.Fatal("republish without the flag must show the header again")
+	}
+}

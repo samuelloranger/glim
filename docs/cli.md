@@ -3,7 +3,7 @@
 ## publish
 
 ```sh
-glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local] [--qr] [--json]
+glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--no-header] [--local] [--qr] [--json]
 ```
 
 Copies `entry` into a new preview and prints its URL. A single file is served as
@@ -69,6 +69,7 @@ Publishing is deliberately conservative so you cannot expose files by accident:
 | `--ttl` | Lifetime, e.g. `6h`, `30m`; must be greater than zero. Defaults to the configured TTL. |
 | `--name` | Reuse this exact slug to update in place at the same URL (created if absent). Omit for a fresh random link. |
 | `--password` | Protect the preview with a password (see [Password protection](#password-protection)). |
+| `--no-header` | Hide the owner-only [glim bar](/dashboard#the-glim-bar) on this preview. Not remembered: republishing with `--name` shows the bar again unless you pass the flag again. |
 | `--local` | Auto-start the built-in server and return a loopback link. |
 | `--json` | Print one JSON object on stdout instead of the plain URL, with the same fields the MCP `present` tool returns: `url`, `name`, `expires` (RFC3339) and `locked` (omitted when false). Nothing else goes to stdout, and the `expires` line and `--qr` code are suppressed: `--json` wins over `--qr`. Errors still go to stderr with a non-zero exit. |
 | `--qr` | Also print a scannable QR code of the URL (to stderr, so stdout stays the plain URL). |

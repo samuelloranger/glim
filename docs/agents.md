@@ -84,6 +84,8 @@ keeps working with fresh contents, and any tab already open on it refreshes
 by itself (see [live reload](/serving); disable with `live_reload: false`). Omitting `name` gives a new random slug, as
 before. `name` accepts lowercase letters, digits and single hyphens only.
 
+The owner of the dashboard sees a small glim bar on previews they open (see [the glim bar](/dashboard#the-glim-bar)). An agent that does not want it on a given preview passes `header: false`; the default is `true`, and it is not remembered, so a republish with `name` shows the bar again unless `header: false` is passed again.
+
 To protect a preview, the agent passes `password` (8 to 72 bytes). Visitors then
 need that password to see anything; glim stores only a bcrypt hash. When an agent
 republishes with `name` and omits `password`, the existing password is kept.

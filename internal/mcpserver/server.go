@@ -22,6 +22,7 @@ type PresentInput struct {
 	Project  string `json:"project,omitempty" jsonschema:"project name, stored as metadata"`
 	TTL      string `json:"ttl,omitempty" jsonschema:"how long the link lives, e.g. 6h or 30m; default 6h"`
 	Password string `json:"password,omitempty" jsonschema:"optional: protect the preview with this password (8-72 bytes); visitors must enter it before seeing anything. Omit when republishing with name to keep the existing password."`
+	Header   *bool  `json:"header,omitempty" jsonschema:"optional, default true: set false to hide the owner-only glim bar on this preview. Not remembered: a republish with name shows the bar again unless header:false is passed again."`
 	Name     string `json:"name,omitempty" jsonschema:"reuse this exact slug (e.g. one returned by an earlier present) to publish an update in place at the same URL; created if it does not exist. Omit to get a fresh random link. Lowercase letters, digits and single hyphens only."`
 }
 
@@ -240,7 +241,7 @@ func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (
 		}
 		hash = h
 	}
-	res, err := s.PublishLocked(path, title, in.Project, "", ttl, in.Name, hash)
+	res, err := s.PublishFull(path, title, in.Project, "", ttl, in.Name, hash, in.Header != nil && !*in.Header)
 	if err != nil && relative {
 		cwd, _ := os.Getwd()
 		err = fmt.Errorf("%w (relative path resolved against %s, where glim mcp runs; pass an absolute path)", err, cwd)

@@ -32,6 +32,9 @@ type Manifest struct {
 	Source string `json:"source,omitempty"`
 	// PasswordHash is a bcrypt hash; when set the preview is locked behind it.
 	PasswordHash string `json:"password_hash,omitempty"`
+	// NoHeader hides the owner-only glim bar on this preview. It is not
+	// sticky: a republish sets it afresh.
+	NoHeader bool `json:"no_header,omitempty"`
 }
 
 // Locked reports whether the preview requires a password.

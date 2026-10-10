@@ -101,6 +101,13 @@ func (s *Store) Publish(entry, title, project, session string, ttl time.Duration
 // PublishLocked is Publish with an optional bcrypt passwordHash. An empty hash
 // keeps whatever lock the preview already has when it is republished in place.
 func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Duration, name, passwordHash string) (PublishResult, error) {
+	return s.PublishFull(entry, title, project, session, ttl, name, passwordHash, false)
+}
+
+// PublishFull is PublishLocked plus noHeader, which hides the owner-only bar
+// on the new publish. Unlike the password it is never carried over from the
+// preview being replaced.
+func (s *Store) PublishFull(entry, title, project, session string, ttl time.Duration, name, passwordHash string, noHeader bool) (PublishResult, error) {
 	abs, err := filepath.Abs(entry)
 	if err != nil {
 		return PublishResult{}, err
@@ -194,6 +201,7 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		Source:  source,
 	}
 	m.PasswordHash = passwordHash
+	m.NoHeader = noHeader
 
 	// Serialize with every other publish, lock, unlock, pin and extend of this
 	// slug from here through the swap, so the manifest read below cannot be

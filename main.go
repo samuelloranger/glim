@@ -95,7 +95,7 @@ func cmdPublish(args []string) error {
 		return err
 	}
 	if entry == "" || fs.NArg() != 0 {
-		return fmt.Errorf("usage: glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local] [--qr] [--json]")
+		return fmt.Errorf("usage: glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--no-header] [--local] [--qr] [--json]")
 	}
 	if *o.format != "" && entry != "-" {
 		return fmt.Errorf("--format only applies when reading the entry from stdin (glim -)")
@@ -138,7 +138,7 @@ func cmdPublish(args []string) error {
 	}
 	s := store.New(cfg.Root, base)
 	s.OnRemove = forgetViews
-	res, err := s.PublishLocked(entry, *title, *project, os.Getenv("GLIM_SESSION_ID"), *ttl, *name, passwordHash)
+	res, err := s.PublishFull(entry, *title, *project, os.Getenv("GLIM_SESSION_ID"), *ttl, *name, passwordHash, *o.noHeader)
 	if err != nil {
 		return err
 	}
@@ -164,6 +164,7 @@ type publishFlags struct {
 	ttl                  *time.Duration
 	local, qr, password  *bool
 	json                 *bool
+	noHeader             *bool
 }
 
 // newPublishFlags defines every flag of the publish command. It is the single
@@ -177,6 +178,7 @@ func newPublishFlags(defaultTTL time.Duration) (*flag.FlagSet, publishFlags) {
 	o.local = fs.Bool("local", false, "auto-start the built-in server and use a localhost link")
 	o.qr = fs.Bool("qr", false, "also print a scannable QR code of the URL")
 	o.password = fs.Bool("password", false, "protect the preview with a password, read from a no-echo prompt (or one line of stdin when piped)")
+	o.noHeader = fs.Bool("no-header", false, "hide the owner-only glim bar on this preview (not remembered on republish)")
 	o.json = fs.Bool("json", false, "print one JSON object (url, name, expires, locked) instead of the plain URL; suppresses --qr")
 	o.name = fs.String("name", "", "reuse this exact slug to update in place at the same URL (created if absent); omit for a fresh random link")
 	o.format = fs.String("format", "", "with entry -: how to read stdin, html (default), md, txt or json")
@@ -608,6 +610,7 @@ func cmdServe(args []string) error {
 	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler(),
 		LiveReload:  cfg.LiveReloadEnabled(),
 		NoSelfFetch: !cfg.SelfFetchEnabled(),
+		NoHeader:    !cfg.HeaderEnabled(),
 		Views:       &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken},
 		Unlock: &serve.Unlock{Token: db.UnlockToken, Limiter: auth.NewLimiter(nil),
 			Secure: strings.HasPrefix(base, "https://")}})
@@ -632,6 +635,7 @@ func cmdConfig(args []string) error {
 	root := fs.String("root", "", "directory previews are stored/served from")
 	ttl := fs.String("ttl", "", "default time to live, e.g. 6h")
 	liveReload := fs.String("live-reload", "", "refresh open tabs when a preview is republished (true or false)")
+	header := fs.String("header", "", "show the owner-only glim bar on preview pages (true or false)")
 	selfFetch := fs.String("self-fetch", "", "let preview pages fetch their own files (true or false)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -648,6 +652,7 @@ func cmdConfig(args []string) error {
 		fmt.Printf("ttl:    %s\n", cfg.TTL)
 		fmt.Printf("live_reload: %t\n", cfg.LiveReloadEnabled())
 		fmt.Printf("self_fetch:  %t\n", cfg.SelfFetchEnabled())
+		fmt.Printf("header:      %t\n", cfg.HeaderEnabled())
 		return nil
 	}
 	if *domain != "" {
@@ -678,6 +683,13 @@ func cmdConfig(args []string) error {
 			return fmt.Errorf("--self-fetch: want true or false, got %q", *selfFetch)
 		}
 		cfg.SelfFetch = &b
+	}
+	if *header != "" {
+		b, err := strconv.ParseBool(*header)
+		if err != nil {
+			return fmt.Errorf("--header: want true or false, got %q", *header)
+		}
+		cfg.Header = &b
 	}
 	if err := cfg.Save(); err != nil {
 		return err

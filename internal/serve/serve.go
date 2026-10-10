@@ -36,10 +36,10 @@ func PreviewHandlerWith(st *store.Store, views *Views) http.Handler {
 // visitor holding its unlock cookie. A nil unlock leaves locked previews
 // permanently locked (fail closed).
 func PreviewHandlerFull(st *store.Store, views *Views, unlock *Unlock) http.Handler {
-	return previewHandler(st, views, unlock, false, true)
+	return previewHandler(st, views, unlock, false, true, true)
 }
 
-func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFetch bool) http.Handler {
+func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFetch, header bool) http.Handler {
 	fsys := noListFS{http.Dir(st.Root)}
 	files := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +96,15 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 				}
 			}
 		}
+		// The owner's copy of a page differs from everyone else's, so any
+		// cache must key HTML on the cookie, and must never keep the owner's.
+		bar := false
+		if header && !m.NoHeader && isDocumentPath(r.URL.Path) {
+			w.Header().Add("Vary", "Cookie")
+			if bar = wantsBar(r) && views.owner(r); bar {
+				w.Header().Set("Cache-Control", "private, no-store")
+			}
+		}
 		if serveHTMLInjected(w, r, fsys, func(doc []byte) (string, string) {
 			now := time.Now()
 			if st.Now != nil {
@@ -105,6 +114,9 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 			if live {
 				v, _ := liveVersion(st, slug)
 				body = liveScript(base + LivePathPrefix + slug + "?v=" + v)
+			}
+			if bar {
+				body += ownerBar(m, slug, base)
 			}
 			return cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, declaredMeta(doc)), body
 		}) {
@@ -199,11 +211,14 @@ type Options struct {
 	// NoSelfFetch turns off the CORS answers that let a preview page fetch its
 	// own files (on by default).
 	NoSelfFetch bool
-	Live        *Live // optional: overrides the default stream settings (tests)
+	// NoHeader turns off the owner-only bar injected into preview pages (on
+	// by default).
+	NoHeader bool
+	Live     *Live // optional: overrides the default stream settings (tests)
 }
 
 func NewRouter(o Options) http.Handler {
-	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload, !o.NoSelfFetch)
+	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload, !o.NoSelfFetch, !o.NoHeader)
 	live := o.Live
 	if o.LiveReload && live == nil {
 		live = NewLive(o.Store)
