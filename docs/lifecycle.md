@@ -20,7 +20,8 @@ glim extend <name> <ttl>
 ```
 
 `extend` replaces the preview's expiry with `now + ttl`; it does not add to its
-previous expiry. `ttl` uses Go duration syntax, such as `30m`, `6h`, or `48h`.
+previous expiry. `ttl` uses Go duration syntax, such as `30m`, `6h`, or `48h`, plus a leading
+whole-day unit such as `3d` or `1d12h`. It must be at most `8760h`.
 On success, glim prints the new expiry in RFC 1123 format.
 
 Examples:
@@ -53,7 +54,7 @@ pin({ name }) -> { pinned }
 extend({ name, ttl }) -> { name, expires }
 ```
 
-`name` is the preview slug. `ttl` is a Go duration string. `extend.expires` is
+`name` is the preview slug. `ttl` is a Go duration string, optionally with a leading `Nd` day unit. `extend.expires` is
 an RFC 3339 timestamp; `pin.pinned` echoes the pinned slug.
 
 ## Persistence and expiry rules
@@ -83,7 +84,8 @@ a temporary preview is wanted again.
 - `extend` fails when its TTL cannot be parsed as a duration.
 - `pin` and `extend` are metadata operations: they do not alter preview files,
   URLs, titles, projects, or creation time.
-- Neither operation revives a preview that has already been removed by GC.
+- Neither operation revives a preview that has already been removed by GC, or
+  one that has expired but not yet been collected; both report it as missing.
 
 ## Verification
 

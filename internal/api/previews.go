@@ -8,8 +8,6 @@ import (
 	"github.com/samuelloranger/glim/internal/store"
 )
 
-const maxTTL = 8760 * time.Hour
-
 func (s *Server) getPreviews(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	snap, err := BuildSnapshot(s.d.Store, s.d.Auth)
 	if err != nil {
@@ -55,7 +53,7 @@ func (s *Server) postExtend(w http.ResponseWriter, r *http.Request, _ auth.Sessi
 		return
 	}
 	ttl, err := time.ParseDuration(body.TTL)
-	if err != nil || ttl <= 0 || ttl > maxTTL {
+	if err != nil || ttl <= 0 || ttl > store.MaxTTL {
 		writeErr(w, http.StatusBadRequest, "invalid", "Choose a lifetime between 1s and 8760h, like 30m or 6h.")
 		return
 	}
