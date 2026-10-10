@@ -47,8 +47,12 @@ func ClientIP(r *http.Request) string {
 			return hops[i]
 		}
 	}
-	// Every hop is a trusted proxy address: the client is on a private network
-	// or the header was forged. Never take the left-most entry, which the
-	// client controls; key on the direct peer instead.
+	// Every hop is a loopback or private address: the client is on a private
+	// network. The right-most hop was appended by the proxy that connected to
+	// us, so the client cannot choose it (it can only prepend); never take the
+	// left-most entry, which the client controls.
+	if len(hops) > 0 {
+		return hops[len(hops)-1]
+	}
 	return peer
 }

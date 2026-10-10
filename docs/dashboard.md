@@ -78,8 +78,10 @@ Removing the last account brings back the "Create your account" form.
   not reset it.
   Behind a reverse proxy, the client address comes from `X-Forwarded-For`, but
   only when the proxy connects from a loopback or private address. The
-  right-most address that is not itself a loopback or private proxy is used; a
-  left-most (client-supplied) entry is never trusted.
+  right-most address that is not itself a loopback or private proxy is used.
+  When every hop is private (a client on your own network), the right-most
+  hop, which the proxy appended, is used; a client-supplied entry is never
+  trusted.
 - The `glim_owner` cookie is scoped to `/` so it reaches previews. It is a
   signed marker tied to your session. It skips counting your own opens and
   bypasses [locked previews](./serving.md); it dies with the session and
