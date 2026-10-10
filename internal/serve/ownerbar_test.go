@@ -63,7 +63,7 @@ func (e *barEnv) do(path string, hdr map[string]string, cookies ...*http.Cookie)
 }
 
 func hasBar(rec *httptest.ResponseRecorder) bool {
-	return strings.Contains(rec.Body.String(), `createElement("glim-bar")`)
+	return strings.Contains(rec.Body.String(), `"data-glim-bar"`)
 }
 
 func TestOwnerBarOwnerGetsBarVisitorDoesNot(t *testing.T) {

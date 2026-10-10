@@ -3,8 +3,12 @@
 // overlay, never touches page layout, and swallows every error.
 try {
   var doc = document, root = doc.documentElement;
-  if (!root || doc.querySelector("glim-bar")) return;
-  var host = doc.createElement("glim-bar");
+  if (!root || window.__glimBar) return;
+  window.__glimBar = true;
+  // A random tag name: a page can neither already contain it nor register it as
+  // its own custom element, either of which would hide or break the bar.
+  var host = doc.createElement("glim-bar-" + Math.random().toString(36).slice(2, 10));
+  host.setAttribute("data-glim-bar", "");
   // Inline !important beats any !important rule the page's own CSS sets on
   // elements, so a hostile stylesheet cannot hide or move the bar.
   var force = {
@@ -21,13 +25,13 @@ try {
     ".w{position:relative;display:flex;justify-content:center;pointer-events:none;" +
     "padding:0 8px calc(8px + env(safe-area-inset-bottom,0px));" +
     "font:13px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
-    "--bg:rgba(255,255,255,.94);--fg:#1c1b19;--mut:#6b675f;--bd:rgba(0,0,0,.14);--hv:rgba(0,0,0,.07);--ac:#c2410c}" +
-    "@media(prefers-color-scheme:dark){.w{--bg:rgba(28,27,25,.94);--fg:#f1efe9;--mut:#a8a398;--bd:rgba(255,255,255,.18);--hv:rgba(255,255,255,.1);--ac:#fb923c}}" +
+    "--bg:rgba(255,255,255,.94);--fg:#1c1b19;--mut:#6b675f;--bd:rgba(0,0,0,.14);--hv:rgba(0,0,0,.07);--ac:#c2410c;--mk:#6366f1}" +
+    "@media(prefers-color-scheme:dark){.w{--bg:rgba(28,27,25,.94);--fg:#f1efe9;--mut:#a8a398;--bd:rgba(255,255,255,.18);--hv:rgba(255,255,255,.1);--ac:#fb923c;--mk:#818cf8}}" +
     ".bar,.pill{pointer-events:auto;background:var(--bg);color:var(--fg);border:1px solid var(--bd);" +
     "box-shadow:0 2px 12px rgba(0,0,0,.22);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}" +
     ".bar{display:flex;align-items:center;gap:4px;width:100%;max-width:640px;height:36px;padding:0 4px 0 10px;border-radius:18px}" +
     ".w.c{justify-content:flex-end}.w.c .bar,.w:not(.c) .pill{display:none}" +
-    ".mark{flex:none;display:flex;color:var(--ac)}" +
+    ".mark{flex:none;display:flex;color:var(--mk)}" +
     ".t{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;margin-left:2px}" +
     ".m{flex:none;display:flex;align-items:center;gap:4px;color:var(--mut);font-size:12px;white-space:nowrap}" +
     "button,a{all:unset;box-sizing:border-box;flex:none;display:flex;align-items:center;gap:5px;height:28px;min-width:28px;" +
@@ -71,7 +75,17 @@ try {
     if (text != null) e.textContent = text;
     return e;
   }
-  var MARK = ["M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z", "M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"];
+  // The glim eye from the app icon, in the bar's accent colour.
+  function mark(size) {
+    var s = icon(["M12 7.5c-3.4 0-6.2 2.2-7.1 4.5.9 2.3 3.7 4.5 7.1 4.5s6.2-2.2 7.1-4.5c-.9-2.3-3.7-4.5-7.1-4.5Z"], size);
+    var c = doc.createElementNS(NS, "circle");
+    c.setAttribute("cx", "12");
+    c.setAttribute("cy", "12");
+    c.setAttribute("r", "2.4");
+    c.setAttribute("fill", "currentColor");
+    s.appendChild(c);
+    return s;
+  }
   function btn(tag, label) {
     var b = el(tag);
     b.setAttribute("aria-label", label);
@@ -82,7 +96,7 @@ try {
   var w = el("div", "w");
   var bar = el("div", "bar");
   var mk = el("span", "mark");
-  mk.appendChild(icon(MARK, 16));
+  mk.appendChild(mark(16));
   var title = el("span", "t", D.title);
   title.title = D.title;
   var meta = el("span", "m");
@@ -130,7 +144,7 @@ try {
 
   var pill = btn("button", "Show glim bar");
   pill.className = "pill";
-  pill.appendChild(icon(MARK, 14));
+  pill.appendChild(mark(14));
   pill.appendChild(el("span", "", "glim"));
 
   var man = null;

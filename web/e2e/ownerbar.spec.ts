@@ -10,7 +10,7 @@ const HOSTILE = `<!doctype html><html><head><style>
   * { display: none !important; color: red !important; visibility: hidden !important; }
   html, body, #keep { display: block !important; visibility: visible !important; }
   div { position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; background: #fff !important; }
-  glim-bar, glim-bar * { display: none !important; }
+  glim-bar, glim-bar *, [data-glim-bar], [data-glim-bar] * { display: none !important; }
 </style></head><body><div id="keep">hostile page</div></body></html>`;
 
 let owner: BrowserContext;
@@ -49,7 +49,7 @@ test.afterAll(async () => {
 test("the owner sees the bar over a hostile page, and it collapses and expands", async () => {
   const slug = publish("Bar demo", { body: HOSTILE });
   await ownerPage.goto(`/${slug}/`);
-  const host = ownerPage.locator("glim-bar");
+  const host = ownerPage.locator("[data-glim-bar]");
   await expect(host).toHaveCount(1);
   await expect(host).toHaveAttribute("data-state", "expanded");
 
@@ -79,10 +79,24 @@ test("the owner sees the bar over a hostile page, and it collapses and expands",
   await expect(host.getByText("Bar demo", { exact: true })).toBeVisible();
 });
 
+test("a page that uses the glim-bar name itself still gets the bar", async () => {
+  const slug = publish("Name clash demo", {
+    body: `<glim-bar>page element</glim-bar><script>
+      customElements.define("glim-bar", class extends HTMLElement {
+        constructor() { super(); this.attachShadow({ mode: "open" }); }
+      });
+    </script>`,
+  });
+  await ownerPage.goto(`/${slug}/`);
+  const host = ownerPage.locator("[data-glim-bar]");
+  await expect(host).toHaveCount(1);
+  await expect(host.getByText("Name clash demo", { exact: true })).toBeVisible();
+});
+
 test("copy link gives feedback or falls back to a selected link", async () => {
   const slug = publish("Copy demo", { body: "<h1>copy</h1>" });
   await ownerPage.goto(`/${slug}/`);
-  const host = ownerPage.locator("glim-bar");
+  const host = ownerPage.locator("[data-glim-bar]");
   await host.getByRole("button", { name: "Copy link" }).click();
   // The sandbox may deny the clipboard; then the bar shows the link to copy by hand.
   const copied = host.getByText("Copied", { exact: true });
@@ -94,7 +108,7 @@ test("copy link gives feedback or falls back to a selected link", async () => {
 test("the page's own layout is not shifted by the bar", async () => {
   const slug = publish("Layout demo", { body: "<body style='margin:0'><h1 id=h>top</h1></body>" });
   await ownerPage.goto(`/${slug}/`);
-  await expect(ownerPage.locator("glim-bar")).toHaveCount(1);
+  await expect(ownerPage.locator("[data-glim-bar]")).toHaveCount(1);
   const pad = await ownerPage.evaluate(() => getComputedStyle(document.body).paddingBottom);
   expect(pad).toBe("0px");
   const h = await ownerPage.locator("#h").boundingBox();
@@ -108,7 +122,7 @@ test("an anonymous visitor never gets the bar", async ({ browser }) => {
     const page = await visitor.newPage();
     await page.goto(`/${slug}/`);
     await expect(page.getByRole("heading", { name: "plain" })).toBeVisible();
-    await expect(page.locator("glim-bar")).toHaveCount(0);
+    await expect(page.locator("[data-glim-bar]")).toHaveCount(0);
     const html = await (await page.request.get(`/${slug}/`)).text();
     expect(html).not.toContain("glim-bar");
   } finally {
