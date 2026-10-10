@@ -15,7 +15,9 @@ import (
 )
 
 type PresentInput struct {
-	Path     string `json:"path" jsonschema:"absolute path (preferred; a leading ~/ is expanded, and a relative path resolves against the directory glim mcp was started in, which may not be your current one) to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
+	Path     string `json:"path,omitempty" jsonschema:"absolute path (preferred when the content is already a file; exactly one of path or content is required; a leading ~/ is expanded, and a relative path resolves against the directory glim mcp was started in, which may not be your current one) to a self-contained HTML file or directory (with index.html), or a .md/.txt/.log/.json/image file (converted to a styled page)"`
+	Content  string `json:"content,omitempty" jsonschema:"the page itself, instead of path: publish text without writing a file first (exactly one of path or content; up to 20 MB). Interpreted per format; html must be self-contained."`
+	Format   string `json:"format,omitempty" jsonschema:"how to read content: html (default), md, txt or json; md/txt/json are converted to a styled page. Only valid with content."`
 	Title    string `json:"title,omitempty" jsonschema:"human title; becomes the readable link slug"`
 	Project  string `json:"project,omitempty" jsonschema:"project name, stored as metadata"`
 	TTL      string `json:"ttl,omitempty" jsonschema:"how long the link lives, e.g. 6h or 30m; default 6h"`
@@ -162,10 +164,40 @@ func presentPreview(s *store.Store, mu *sync.Mutex, defaultTTL time.Duration, en
 	return res, warning, err
 }
 
+// presentSource resolves what in publishes: its path, or its inline content
+// staged into a private temp directory that cleanup (always non-nil) removes.
+// title is in.Title, or for content a default taken from the content.
+func presentSource(in PresentInput) (path string, relative bool, title string, cleanup func(), err error) {
+	cleanup = func() {}
+	title = in.Title
+	switch {
+	case in.Path != "" && in.Content != "":
+		return "", false, "", cleanup, fmt.Errorf("pass either path or content, not both")
+	case in.Path == "" && in.Content == "":
+		return "", false, "", cleanup, fmt.Errorf("pass path (a file or directory to publish) or content (the page itself)")
+	case in.Content == "":
+		if in.Format != "" {
+			return "", false, "", cleanup, fmt.Errorf("format only applies to content, not path")
+		}
+		path, relative, err = resolvePath(in.Path)
+		return path, relative, title, cleanup, err
+	}
+	format, err := store.NormalizeInlineFormat(in.Format)
+	if err != nil {
+		return "", false, "", cleanup, err
+	}
+	if title == "" {
+		title = store.InlineTitle(in.Content, format)
+	}
+	path, cleanup, err = store.StageInline(in.Content, format, title)
+	return path, false, title, cleanup, err
+}
+
 // publishPreview validates the ttl, whether explicit or the resolved default
 // (rejecting zero or negative lifetimes), and publishes the preview.
 func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (store.PublishResult, error) {
-	path, relative, err := resolvePath(in.Path)
+	path, relative, title, cleanup, err := presentSource(in)
+	defer cleanup()
 	if err != nil {
 		return store.PublishResult{}, err
 	}
@@ -187,7 +219,7 @@ func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (
 		}
 		hash = h
 	}
-	res, err := s.PublishLocked(path, in.Title, in.Project, "", ttl, in.Name, hash)
+	res, err := s.PublishLocked(path, title, in.Project, "", ttl, in.Name, hash)
 	if err != nil && relative {
 		cwd, _ := os.Getwd()
 		err = fmt.Errorf("%w (relative path resolved against %s, where glim mcp runs; pass an absolute path)", err, cwd)
@@ -268,7 +300,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "present",
-		Description: "Publish a self-contained HTML file or directory, or a Markdown, text, JSON or image file (converted to a styled page), and return a short-lived link to show the user, optionally behind a password. Pass `name` to update an existing preview in place (omit `password` to keep its current one); open tabs usually refresh by themselves. Pages run in a sandbox: localStorage, sessionStorage, cookies, IndexedDB and service workers throw (use try/catch), fetch/XHR of the page's own files fails (inline the data), and CDN scripts, styles and images work. Use this to show any visual/HTML preview instead of other preview mechanisms.",
+		Description: "Publish a self-contained HTML file or directory, or a Markdown, text, JSON or image file (converted to a styled page), and return a short-lived link to show the user, optionally behind a password. Pass `name` to update an existing preview in place (omit `password` to keep its current one); open tabs usually refresh by themselves. Pass exactly one of `path` (an existing file or directory) or `content` (the page text itself, no file needed; `format` html by default, or md, txt, json). Pages run in a sandbox: localStorage, sessionStorage, cookies, IndexedDB and service workers throw (use try/catch), fetch/XHR of the page's own files fails (inline the data), and CDN scripts, styles and images work. Use this to show any visual/HTML preview instead of other preview mechanisms.",
 		// Creates a new preview each call: writes state, additive (not
 		// destructive), non-idempotent, closed domain (own local store/server).
 		Annotations: &mcp.ToolAnnotations{
