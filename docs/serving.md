@@ -70,8 +70,10 @@ Submitting the form `POST`s to the page's own path. A correct password sets a
 `glim_unlock_<slug>` cookie (`HttpOnly`, `Path=/<slug>/`) and redirects back
 (`303`). Its value is an HMAC of the slug and the current password hash under
 the server's secret, so changing or removing the password invalidates every
-earlier unlock. Attempts are rate-limited per client address and preview
-(repeated failures are answered with `429` and `Retry-After`). Unlock attempts
+earlier unlock. Attempts are rate-limited per client address and preview, and
+capped per preview regardless of client address (excess attempts are answered
+with `429` and `Retry-After`). Every response for a locked preview carries
+`Cache-Control: private, no-store`. Unlock attempts
 never count as [views](./dashboard.md#seen-indicator), and a signed-in dashboard
 owner (the `glim_owner` cookie, valid only while their session is live)
 bypasses the lock. When the owner opens a locked page this way, glim also sets

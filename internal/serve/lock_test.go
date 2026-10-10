@@ -1,12 +1,14 @@
 package serve
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -237,5 +239,96 @@ func TestLockedWithoutUnlockConfigFailsClosed(t *testing.T) {
 	h.ServeHTTP(rec, r)
 	if rec.Code == 303 {
 		t.Fatal("unlock must not succeed without an Unlock config")
+	}
+}
+
+// doFrom is do with a chosen peer address and X-Forwarded-For value.
+func (e *lockEnv) doFrom(peer, xff, path string, form url.Values) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", path, strings.NewReader(form.Encode()))
+	r.RemoteAddr = peer
+	if xff != "" {
+		r.Header.Set("X-Forwarded-For", xff)
+	}
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	e.h.ServeHTTP(rec, r)
+	return rec
+}
+
+func TestUnlockConcurrentGuessesAreBounded(t *testing.T) {
+	e := newLockEnv(t, true)
+	page := "/" + e.slug + "/"
+	const n = 100
+	codes := make(chan int, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			codes <- e.do("POST", page, url.Values{"password": {"wrong-pass"}}).Code
+		}()
+	}
+	wg.Wait()
+	close(codes)
+	evaluated := 0
+	for c := range codes {
+		if c == http.StatusUnauthorized {
+			evaluated++
+		} else if c != http.StatusTooManyRequests {
+			t.Fatalf("unexpected status %d", c)
+		}
+	}
+	if evaluated > 5 {
+		t.Fatalf("%d concurrent wrong unlocks were evaluated, want at most 5", evaluated)
+	}
+}
+
+// Rotating the client address (here through X-Forwarded-For behind a proxy on
+// loopback) must not buy unlimited guesses on one preview.
+func TestUnlockPerPreviewCapIgnoresClientAddress(t *testing.T) {
+	e := newLockEnv(t, true)
+	page := "/" + e.slug + "/"
+	evaluated := 0
+	for i := 0; i < 2*maxUnlockAttempts; i++ {
+		xff := fmt.Sprintf("198.51.100.%d", i+1)
+		rec := e.doFrom("127.0.0.1:5000", xff, page, url.Values{"password": {"wrong-pass"}})
+		if rec.Code == http.StatusUnauthorized {
+			evaluated++
+		} else if rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("attempt %d = %d", i, rec.Code)
+		}
+	}
+	if evaluated != maxUnlockAttempts {
+		t.Fatalf("evaluated %d guesses across rotating addresses, want %d", evaluated, maxUnlockAttempts)
+	}
+	// Even the right password is refused while the preview is capped.
+	rec := e.doFrom("127.0.0.1:5000", "198.51.100.200", page, url.Values{"password": {"hunter22!"}})
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("capped preview accepted a new address: %d", rec.Code)
+	}
+}
+
+func TestUnlockSuccessRefundsCap(t *testing.T) {
+	e := newLockEnv(t, true)
+	for i := 0; i < 3*maxUnlockAttempts; i++ {
+		e.unlockCookie(t)
+	}
+}
+
+func TestLockedResponsesAreNeverSharedCacheable(t *testing.T) {
+	e := newLockEnv(t, true)
+	page := "/" + e.slug + "/"
+	// An HTML file past the injection limit is served by the plain file server.
+	big := strings.Repeat("x", maxInjectSize+1)
+	writeTestFile(t, filepath.Join(e.st.Root, e.slug, "big.html"), "<html><body>"+big+"</body></html>")
+	c := e.unlockCookie(t)
+	for _, p := range []string{page, page + "app.js", page + "big.html"} {
+		rec := e.do("GET", p, nil, c)
+		if rec.Code != 200 {
+			t.Fatalf("GET %s = %d", p, rec.Code)
+		}
+		if cc := rec.Header().Get("Cache-Control"); cc != "private, no-store" {
+			t.Errorf("GET %s Cache-Control = %q, want private, no-store", p, cc)
+		}
 	}
 }

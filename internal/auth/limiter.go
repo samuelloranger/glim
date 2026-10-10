@@ -29,6 +29,8 @@ type Limiter struct {
 	now   func() time.Time
 	users map[string]*userFails
 	ips   map[string][]time.Time
+	// caps holds the sliding windows behind ReserveWindow, keyed by caller.
+	caps map[string][]time.Time
 	// lastSweep is when idle entries were last evicted; see maybeSweep.
 	lastSweep time.Time
 }
@@ -37,14 +39,88 @@ func NewLimiter(now func() time.Time) *Limiter {
 	if now == nil {
 		now = time.Now
 	}
-	return &Limiter{now: now, users: map[string]*userFails{}, ips: map[string][]time.Time{}}
+	return &Limiter{now: now, users: map[string]*userFails{}, ips: map[string][]time.Time{}, caps: map[string][]time.Time{}}
 }
 
+// Check reports how long the caller must wait, without counting an attempt.
+// Callers that go on to verify a password must use Reserve instead: a Check
+// followed by a later Fail lets parallel requests all pass the check.
 func (l *Limiter) Check(user, ip string) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
 	l.maybeSweep(now)
+	return l.wait(user, ip, now)
+}
+
+// Reserve is Check and Fail in one critical section: when the attempt is
+// allowed (wait == 0) it is counted as a failure immediately, before the
+// password is verified, so concurrent attempts cannot all slip past the limit.
+// The caller undoes the count with Release when the attempt turns out not to be
+// a credential failure, and with Release plus Succeed when it succeeds. A
+// blocked attempt (wait > 0) is not counted.
+func (l *Limiter) Reserve(user, ip string) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	l.maybeSweep(now)
+	if wait := l.wait(user, ip, now); wait > 0 {
+		return wait
+	}
+	l.fail(user, ip, now)
+	return 0
+}
+
+// Release undoes one Reserve: it drops one failure from the account and the
+// newest one from the address.
+func (l *Limiter) Release(user, ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if f := l.users[user]; user != "" && f != nil {
+		if f.count--; f.count <= 0 {
+			delete(l.users, user)
+		}
+	}
+	if fails := l.ips[ip]; ip != "" && len(fails) > 0 {
+		l.ips[ip] = fails[:len(fails)-1]
+	}
+}
+
+// ReserveWindow counts one attempt against key, allowing at most max per
+// window. It returns the wait until the oldest counted attempt leaves the
+// window, or 0 when the attempt was admitted (and counted). It is independent
+// of any client address, so rotating addresses cannot buy more attempts.
+func (l *Limiter) ReserveWindow(key string, max int, window time.Duration) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	l.maybeSweep(now)
+	hits := l.caps[key]
+	i := 0
+	for i < len(hits) && now.Sub(hits[i]) >= window {
+		i++
+	}
+	hits = hits[i:]
+	if len(hits) >= max {
+		l.caps[key] = hits
+		return hits[len(hits)-max].Add(window).Sub(now)
+	}
+	l.caps[key] = append(hits, now)
+	return 0
+}
+
+// ReleaseWindow undoes one admitted ReserveWindow.
+func (l *Limiter) ReleaseWindow(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if hits := l.caps[key]; len(hits) > 1 {
+		l.caps[key] = hits[:len(hits)-1]
+	} else {
+		delete(l.caps, key)
+	}
+}
+
+func (l *Limiter) wait(user, ip string, now time.Time) time.Duration {
 	var wait time.Duration
 	if f := l.users[user]; user != "" && f != nil && f.count >= userFreeFails {
 		shift := f.count - userFreeFails
@@ -72,6 +148,10 @@ func (l *Limiter) Fail(user, ip string) {
 	defer l.mu.Unlock()
 	now := l.now()
 	l.maybeSweep(now)
+	l.fail(user, ip, now)
+}
+
+func (l *Limiter) fail(user, ip string, now time.Time) {
 	if user != "" {
 		f := l.users[user]
 		if f == nil {
@@ -142,5 +222,12 @@ func (l *Limiter) maybeSweep(now time.Time) {
 	}
 	for ip := range l.ips {
 		l.pruneIP(ip, now)
+	}
+	// Window caps are pruned lazily on use; drop keys idle past the horizon so
+	// abandoned slugs don't accumulate.
+	for k, hits := range l.caps {
+		if len(hits) == 0 || now.Sub(hits[len(hits)-1]) >= userIdleHorizon {
+			delete(l.caps, k)
+		}
 	}
 }

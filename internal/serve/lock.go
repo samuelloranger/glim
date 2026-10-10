@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/store"
@@ -14,6 +15,14 @@ import (
 // UnlockCookiePrefix names the per-preview cookie that proves a visitor knows
 // the preview's password: glim_unlock_<slug>.
 const UnlockCookiePrefix = "glim_unlock_"
+
+// maxUnlockAttempts caps password attempts per preview within unlockWindow no
+// matter which client addresses they come from, so rotating addresses cannot
+// buy unlimited guesses on one preview.
+const (
+	maxUnlockAttempts = 30
+	unlockWindow      = 15 * time.Minute
+)
 
 // maxUnlockForm caps the unlock form body read from a visitor.
 const maxUnlockForm = 4 << 10
@@ -95,7 +104,16 @@ func attemptUnlock(w http.ResponseWriter, r *http.Request, slug string, m store.
 	}
 	ip := auth.ClientIP(r)
 	key := ip + "\x00" + slug
-	if wait := u.Limiter.Check(key, ip); wait > 0 {
+	capKey := "unlock\x00" + slug
+	// Both limits are reserved before the password is checked, so concurrent
+	// guesses cannot all pass them. A blocked attempt is not counted.
+	wait := u.Limiter.ReserveWindow(capKey, maxUnlockAttempts, unlockWindow)
+	if wait == 0 {
+		if wait = u.Limiter.Reserve(key, ip); wait > 0 {
+			u.Limiter.ReleaseWindow(capKey)
+		}
+	}
+	if wait > 0 {
 		secs := int((wait + 999_999_999) / 1_000_000_000)
 		w.Header().Set("Retry-After", fmt.Sprint(secs))
 		writeLockPage(w, r, base, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", secs))
@@ -103,10 +121,11 @@ func attemptUnlock(w http.ResponseWriter, r *http.Request, slug string, m store.
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUnlockForm)
 	if err := r.ParseForm(); err != nil || !auth.CheckPassword(m.PasswordHash, r.PostForm.Get("password")) {
-		u.Limiter.Fail(key, ip)
 		writeLockPage(w, r, base, http.StatusUnauthorized, "Wrong password.")
 		return
 	}
+	u.Limiter.ReleaseWindow(capKey)
+	u.Limiter.Release(key, ip)
 	u.Limiter.Succeed(key)
 	setUnlockCookie(w, slug, m, u)
 	http.Redirect(w, r, r.URL.RequestURI(), http.StatusSeeOther)

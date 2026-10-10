@@ -64,20 +64,21 @@ func (s *Server) postPassword(w http.ResponseWriter, r *http.Request, sess auth.
 	// Guessing the current password through a stolen session must be throttled
 	// like sign-in is. A separate key keeps a flood here from locking sign-in.
 	key, ip := "password:"+sess.User.Email, clientIP(r)
-	if wait := s.d.Limiter.Check(key, ip); wait > 0 {
+	if wait := s.d.Limiter.Reserve(key, ip); wait > 0 {
 		tooMany(w, wait)
 		return
 	}
 	err := s.d.Auth.ChangePassword(r.Context(), sess.User, body.Current, body.Next, sess.Token)
 	if errors.Is(err, auth.ErrBadCredentials) {
-		s.d.Limiter.Fail(key, ip)
 		writeErr(w, http.StatusBadRequest, "invalid", "Your current password is wrong.")
 		return
 	}
 	if err != nil {
+		s.d.Limiter.Release(key, ip)
 		s.fail(w, err)
 		return
 	}
+	s.d.Limiter.Release(key, ip)
 	s.d.Limiter.Succeed(key)
 	w.WriteHeader(http.StatusNoContent)
 }

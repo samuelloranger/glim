@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/samuelloranger/glim/internal/auth"
@@ -110,5 +111,40 @@ func TestLogoutClearsOwnerCookie(t *testing.T) {
 	}
 	if !cleared {
 		t.Fatalf("owner cookie not cleared: %v", rec.Result().Cookies())
+	}
+}
+
+// Parallel wrong guesses from one address must be bounded by the limiter, not
+// all evaluated before the first failure is recorded.
+func TestLoginConcurrentGuessesAreBounded(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.db.CreateUser(t.Context(), "sam@example.com", testPass); err != nil {
+		t.Fatal(err)
+	}
+	bad := map[string]string{"email": "sam@example.com", "password": "not the password"}
+	const n = 100
+	codes := make(chan int, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			codes <- e.do(http.MethodPost, "/_glim/api/login", bad, nil, nil).Code
+		}()
+	}
+	wg.Wait()
+	close(codes)
+	evaluated := 0
+	for c := range codes {
+		switch c {
+		case http.StatusUnauthorized:
+			evaluated++
+		case http.StatusTooManyRequests:
+		default:
+			t.Fatalf("unexpected status %d", c)
+		}
+	}
+	if evaluated > 5 {
+		t.Fatalf("%d concurrent wrong logins were evaluated, want at most 5", evaluated)
 	}
 }
