@@ -55,14 +55,25 @@ func (db *DB) VAPIDKeys(ctx context.Context) (private, public string, err error)
 	return private, public, nil
 }
 
-// SavePushSub stores a subscription, replacing any earlier one for the same
-// endpoint (the browser re-subscribing, or another user on the same browser).
+// ErrPushEndpointTaken means the endpoint is already subscribed by another user.
+var ErrPushEndpointTaken = errors.New("push endpoint belongs to another account")
+
+// SavePushSub stores a subscription. Re-subscribing the same endpoint as the
+// same user refreshes its keys; an endpoint owned by another user is never
+// moved, so one account can't take over or silence another's subscription.
 func (db *DB) SavePushSub(ctx context.Context, s PushSub) error {
-	_, err := db.sql.ExecContext(ctx,
+	res, err := db.sql.ExecContext(ctx,
 		`INSERT INTO push_subscriptions(endpoint, p256dh, auth, user_id, created_at) VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, user_id = excluded.user_id`,
+		 ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth
+		 WHERE push_subscriptions.user_id = excluded.user_id`,
 		s.Endpoint, s.P256dh, s.Auth, s.UserID, db.now().Unix())
-	return err
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrPushEndpointTaken
+	}
+	return nil
 }
 
 // DeletePushSub removes one user's subscription for an endpoint.

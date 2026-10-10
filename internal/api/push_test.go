@@ -97,3 +97,29 @@ func TestPushSubscribeNeedsCSRF(t *testing.T) {
 		t.Fatalf("cross origin = %d", rec.Code)
 	}
 }
+
+func TestPushSubscribeCannotTakeOverAnotherUsersEndpoint(t *testing.T) {
+	e := newEnv(t)
+	a := e.signIn("a@example.com")
+	b := e.signIn("b@example.com")
+	if rec := e.do("POST", "/_glim/api/push/subscribe", goodSub, &a, nil); rec.Code != 204 {
+		t.Fatal(rec.Code)
+	}
+	other := map[string]any{"endpoint": "https://push.example/abc",
+		"keys": map[string]string{"p256dh": "Other", "auth": "Other"}}
+	if rec := e.do("POST", "/_glim/api/push/subscribe", other, &b, nil); rec.Code != 409 {
+		t.Fatalf("takeover = %d", rec.Code)
+	}
+	subs, _ := e.db.PushSubs(t.Context())
+	if len(subs) != 1 || subs[0].UserID != a.User.ID || subs[0].P256dh != "BPubKey_-0" {
+		t.Fatalf("subs = %+v", subs)
+	}
+	refresh := map[string]any{"endpoint": "https://push.example/abc",
+		"keys": map[string]string{"p256dh": "NewKey", "auth": "NewAuth"}}
+	if rec := e.do("POST", "/_glim/api/push/subscribe", refresh, &a, nil); rec.Code != 204 {
+		t.Fatalf("owner refresh = %d", rec.Code)
+	}
+	if subs, _ := e.db.PushSubs(t.Context()); subs[0].P256dh != "NewKey" {
+		t.Fatalf("keys not refreshed: %+v", subs)
+	}
+}

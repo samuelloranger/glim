@@ -1,8 +1,9 @@
 package api
 
 import (
-	"net"
+	"errors"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -26,7 +27,9 @@ func validEndpoint(raw string) bool {
 	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
 		return false
 	}
-	if ip := net.ParseIP(h); ip != nil && (!ip.IsGlobalUnicast() || ip.IsPrivate()) {
+	// A literal address (including a zoned one such as fe80::1%eth0) must be
+	// public. Hostnames are checked again at connect time by the push client.
+	if ip, err := netip.ParseAddr(h); err == nil && !publicAddr(ip) {
 		return false
 	}
 	return true
@@ -66,6 +69,10 @@ func (s *Server) postPushSubscribe(w http.ResponseWriter, r *http.Request, sess 
 	}
 	err := s.d.Auth.SavePushSub(r.Context(), auth.PushSub{
 		Endpoint: body.Endpoint, P256dh: k.P256dh, Auth: k.Auth, UserID: sess.User.ID})
+	if errors.Is(err, auth.ErrPushEndpointTaken) {
+		writeErr(w, http.StatusConflict, "conflict", "This device is already subscribed under another account.")
+		return
+	}
 	if err != nil {
 		s.internal(w, err)
 		return
