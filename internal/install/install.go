@@ -633,8 +633,22 @@ func upsertBlock(path, begin, end, body string) error {
 			// The text after the end marker supplies the final terminator.
 			block += eol + eol + foreign
 		}
+		if begin == blockBeginTOML {
+			if err := checkNoUnmanagedGlim(path, content[:sp.start]+"\n"+content[sp.end:]); err != nil {
+				return err
+			}
+		}
 		content = content[:sp.start] + block + content[sp.end:]
 		return os.WriteFile(path, []byte(content), 0o644)
+	}
+	if begin == blockBeginTOML {
+		adopted, changed, err := adoptUnmanagedGlim(path, content, begin, end, body, eol)
+		if err != nil {
+			return err
+		}
+		if changed {
+			return os.WriteFile(path, []byte(adopted), 0o644)
+		}
 	}
 	if content != "" && !strings.HasSuffix(content, "\n") {
 		content += eol
