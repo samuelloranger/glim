@@ -256,6 +256,67 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+/* Phones: brand and account on one row, connection and stats on the next,
+   search filling the width beside the project picker. */
+@media (max-width: 640px) {
+  .statusbar {
+    gap: 0 16px;
+    padding: 14px 0 10px;
+  }
+
+  .statusbar .account {
+    order: 1;
+    min-width: 0;
+    max-width: 55%;
+    margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Line break between the brand row and the connection and stats row. */
+  .statusbar::after {
+    content: "";
+    order: 2;
+    flex-basis: 100%;
+  }
+
+  .conn {
+    order: 3;
+  }
+
+  .stats {
+    order: 4;
+    gap: 4px 12px;
+    margin-left: 0;
+  }
+
+  .toolbar {
+    gap: 8px;
+    padding-bottom: 20px;
+  }
+
+  .filters {
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+
+  .filters .search {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  /* iOS zooms into inputs under 16px on focus. */
+  .filters .input {
+    font-size: 16px;
+  }
+
+  .next {
+    margin-left: 0;
+  }
+}
+
 .empty {
   display: grid;
   justify-items: start;
