@@ -592,7 +592,9 @@ func cmdServe(args []string) error {
 	if _, _, err := db.VAPIDKeys(ctx); err != nil {
 		return err
 	}
-	hub.SetNotifier(api.NewNotifier(db, api.WebPushSender{DB: db, Subscriber: pushSubscriber(base)}, log.Printf))
+	notifier := api.NewNotifier(db, &api.WebPushSender{DB: db, Subscriber: pushSubscriber(base)}, log.Printf)
+	go notifier.Run(ctx)
+	hub.SetNotifier(notifier)
 	go hub.Run(ctx)
 	recorder := db.NewViewRecorder(hub.Poke)
 	defer recorder.Close()
