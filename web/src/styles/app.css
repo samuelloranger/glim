@@ -256,44 +256,65 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-/* Phones: brand and account on one row, connection and stats on the next,
-   search filling the width beside the project picker. */
+/* The phone header's icons stay hidden on wider screens. */
+.stat-icon,
+.menu-icon {
+  display: none;
+}
+
+.stats li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Phones: one header row (brand, live dot, stats as icon and number, menu
+   button), then the search filling the width beside the project picker. */
 @media (max-width: 640px) {
   .statusbar {
-    gap: 0 16px;
-    padding: 14px 0 10px;
+    flex-wrap: nowrap;
+    gap: 12px;
+    padding: 12px 0;
   }
 
-  .statusbar .account {
-    order: 1;
-    min-width: 0;
-    max-width: 55%;
-    margin-left: auto;
+  .brand {
+    gap: 8px;
   }
 
-  /* The button is a flex container, so the ellipsis needs its own box. */
+  .conn-label,
+  .stat-label,
   .account-label {
-    min-width: 0;
+    position: absolute;
+    width: 1px;
+    height: 1px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    clip: rect(0 0 0 0);
     white-space: nowrap;
   }
 
-  /* Line break between the brand row and the connection and stats row. */
-  .statusbar::after {
-    content: "";
-    order: 2;
-    flex-basis: 100%;
-  }
-
-  .conn {
-    order: 3;
+  .stat-icon,
+  .menu-icon {
+    display: block;
+    flex: none;
   }
 
   .stats {
-    order: 4;
-    gap: 4px 12px;
-    margin-left: 0;
+    flex-wrap: nowrap;
+    gap: 12px;
+    white-space: nowrap;
+  }
+
+  .statusbar .account {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+    padding: 0;
+    color: var(--glint);
+  }
+
+  .menu-icon {
+    width: 22px;
+    height: 22px;
   }
 
   .toolbar {
