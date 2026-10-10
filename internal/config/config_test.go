@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLiveReloadDefaultsOnAndIsConfigurable(t *testing.T) {
@@ -25,5 +26,11 @@ func TestLiveReloadDefaultsOnAndIsConfigurable(t *testing.T) {
 	t.Setenv("GLIM_LIVE_RELOAD", "true")
 	if !Load().LiveReloadEnabled() {
 		t.Fatal("env should override the file")
+	}
+}
+
+func TestTTLDurationAcceptsDays(t *testing.T) {
+	if got := (Config{TTL: "2d"}).TTLDuration(); got != 48*time.Hour {
+		t.Fatalf("TTLDuration(2d) = %s", got)
 	}
 }

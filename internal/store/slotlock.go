@@ -2,6 +2,7 @@ package store
 
 import (
 	"os"
+	"sync"
 	"syscall"
 )
 
@@ -10,7 +11,8 @@ import (
 // server share a store) and between separate opens in one process, so it
 // serializes every writer of a preview's directory and manifest. The lock is on
 // the root directory itself, which leaves no lock files behind; only the short
-// manifest-read-and-swap section is held under it, never the file copying.
+// manifest-read-and-swap section is held under it, never the file copying. The
+// returned function is safe to call more than once.
 func (s *Store) lockSlug(string) (func(), error) {
 	if err := os.MkdirAll(s.Root, 0o755); err != nil {
 		return nil, err
@@ -29,8 +31,11 @@ func (s *Store) lockSlug(string) (func(), error) {
 		f.Close()
 		return nil, err
 	}
+	var once sync.Once
 	return func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-		f.Close()
+		once.Do(func() {
+			_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			f.Close()
+		})
 	}, nil
 }

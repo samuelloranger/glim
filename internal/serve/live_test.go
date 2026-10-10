@@ -2,7 +2,6 @@ package serve
 
 import (
 	"bufio"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -208,54 +207,38 @@ func TestLiveScriptNotInUnlockPage(t *testing.T) {
 	}
 }
 
-// A manifest-only change (extend) leaves the HTML mtime alone but changes the
-// injected ?v=, so a conditional GET must not be answered with 304.
-func TestLiveConditionalGetAfterManifestOnlyChange(t *testing.T) {
+// Pin and extend rewrite only the manifest, so they must not reload open tabs
+// nor change the version the page was served with.
+func TestLiveIgnoresManifestOnlyChanges(t *testing.T) {
 	st, _, srv := liveEnv(t)
+	before, _ := liveVersion(st, "demo-1234")
 	resp := openLive(t, srv, "/_glim/live/demo-1234")
 	ch := lines(resp)
 	waitFor(t, ch, ": ok")
 
-	first, err := http.Get(srv.URL + "/demo-1234/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	b1, _ := io.ReadAll(first.Body)
-	first.Body.Close()
-	if cc := first.Header.Get("Cache-Control"); cc != "no-cache" {
-		t.Fatalf("Cache-Control = %q", cc)
-	}
-	etag, lm := first.Header.Get("ETag"), first.Header.Get("Last-Modified")
-	if etag == "" {
-		t.Fatal("missing ETag")
-	}
-
-	time.Sleep(1100 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
 	if err := st.Extend("demo-1234", 3*time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, ch, "event: changed")
-
-	for _, hdr := range []map[string]string{
-		{"If-None-Match": etag},
-		{"If-Modified-Since": time.Now().UTC().Format(http.TimeFormat)},
-		{"If-None-Match": etag, "If-Modified-Since": lm},
-	} {
-		req, _ := http.NewRequest("GET", srv.URL+"/demo-1234/", nil)
-		for k, v := range hdr {
-			req.Header.Set(k, v)
-		}
-		r, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		b2, _ := io.ReadAll(r.Body)
-		r.Body.Close()
-		if r.StatusCode != 200 {
-			t.Fatalf("%v: status %d, want 200", hdr, r.StatusCode)
-		}
-		if string(b2) == string(b1) {
-			t.Fatalf("%v: body still has the old ?v=", hdr)
+	if err := st.Pin("demo-1234"); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := liveVersion(st, "demo-1234"); after != before {
+		t.Fatalf("version changed on manifest-only rewrite: %q -> %q", before, after)
+	}
+	// Several polls pass with no "changed"; a republish then still reloads.
+	deadline := time.After(150 * time.Millisecond)
+wait:
+	for {
+		select {
+		case l := <-ch:
+			if strings.Contains(l, "event: changed") {
+				t.Fatal("manifest-only change reloaded the tab")
+			}
+		case <-deadline:
+			break wait
 		}
 	}
+	publish(t, st, "demo-1234", map[string]string{"index.html": "<html><body>v2</body></html>"}, 2*time.Hour)
+	waitFor(t, ch, "event: changed")
 }

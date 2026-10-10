@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -42,14 +40,14 @@ func NewLive(st *store.Store) *Live {
 		MaxTotal: 200, MaxPerIP: 20, perIP: map[string]int{}}
 }
 
-// liveVersion fingerprints a preview's manifest (mtime and size), the signal
-// every republish changes.
+// liveVersion returns the preview's publish stamp, which only a republish
+// changes; pin, extend and lock rewrite the manifest without reloading tabs.
 func liveVersion(st *store.Store, slug string) (string, bool) {
-	info, err := os.Stat(filepath.Join(st.Root, slug, store.ManifestFile))
+	m, err := st.Get(slug)
 	if err != nil {
 		return "", false
 	}
-	return fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size()), true
+	return m.Stamp(), true
 }
 
 func (l *Live) acquire(ip string) bool {

@@ -180,6 +180,7 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		Session: session,
 		Created: created,
 		Expires: created.Add(ttl),
+		Version: newVersion(),
 	}
 	m.PasswordHash = passwordHash
 
@@ -193,18 +194,29 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 	defer unlock()
 
 	dir := filepath.Join(s.Root, name)
-	if passwordHash == "" {
-		// Keep an existing lock. Fail closed: a live directory whose manifest
-		// cannot be read must not be republished unlocked.
-		if _, err := os.Lstat(dir); err == nil {
-			old, err := readManifest(dir)
-			if err != nil {
-				return PublishResult{}, fmt.Errorf("cannot read the existing manifest of %s, refusing to republish it: %w", name, err)
+	if _, err := os.Lstat(dir); err == nil {
+		old, err := readManifest(dir)
+		switch {
+		case err == nil:
+			// A republish keeps the pin, and the title and project unless the
+			// new call sets its own. An empty hash keeps the existing lock.
+			m.Pinned = old.Pinned
+			if m.Title == "" {
+				m.Title = old.Title
 			}
-			m.PasswordHash = old.PasswordHash
-		} else if !os.IsNotExist(err) {
-			return PublishResult{}, err
+			if m.Project == "" {
+				m.Project = old.Project
+			}
+			if passwordHash == "" {
+				m.PasswordHash = old.PasswordHash
+			}
+		case passwordHash == "":
+			// Fail closed: a live directory whose manifest cannot be read
+			// must not be republished unlocked.
+			return PublishResult{}, fmt.Errorf("cannot read the existing manifest of %s, refusing to republish it: %w", name, err)
 		}
+	} else if !os.IsNotExist(err) {
+		return PublishResult{}, err
 	}
 	if err := writeManifest(tmp, m); err != nil {
 		return PublishResult{}, err
@@ -232,6 +244,8 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		os.RemoveAll(aside)
 	}
 
+	// GC takes the slug lock itself, so release it first.
+	unlock()
 	_, _ = s.GC()
 
 	return PublishResult{Name: name, URL: s.url(name), Expires: m.Expires, Locked: m.Locked()}, nil
@@ -362,7 +376,7 @@ func (s *Store) Pin(name string) error {
 	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
-	if err != nil {
+	if err != nil || m.Expired(s.now()) {
 		return fmt.Errorf("no such preview: %s", name)
 	}
 	m.Pinned = true
@@ -389,9 +403,17 @@ func (s *Store) SetPasswordHash(name, hash string) error {
 	return writeManifest(dir, m)
 }
 
+// Extend replaces a live preview's expiry with now+ttl. An expired preview is
+// treated as gone even if GC has not removed it yet.
 func (s *Store) Extend(name string, ttl time.Duration) error {
 	if !ValidName(name) {
 		return fmt.Errorf("no such preview: %s", name)
+	}
+	if err := ValidateTTL(ttl); err != nil {
+		return err
+	}
+	if ttl > MaxTTL {
+		return fmt.Errorf("ttl must be at most %s, got %s", MaxTTL, ttl)
 	}
 	unlock, err := s.lockSlug(name)
 	if err != nil {
@@ -400,7 +422,7 @@ func (s *Store) Extend(name string, ttl time.Duration) error {
 	defer unlock()
 	dir := filepath.Join(s.Root, name)
 	m, err := readManifest(dir)
-	if err != nil {
+	if err != nil || m.Expired(s.now()) {
 		return fmt.Errorf("no such preview: %s", name)
 	}
 	m.Expires = s.now().Add(ttl)
@@ -459,18 +481,37 @@ func (s *Store) GC() (int, error) {
 		if strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		m, err := readManifest(dir)
-		if err != nil {
-			continue
-		}
-		if m.Expired(now) {
-			if os.RemoveAll(dir) == nil {
-				removed++
-				s.removed(e.Name())
-			}
+		if s.reapExpired(e.Name(), now) {
+			removed++
 		}
 	}
 	return removed, nil
+}
+
+// reapExpired removes the named preview if it is expired, re-checking under
+// the slug lock so an extend, pin or republish that landed after the caller's
+// scan is not lost.
+func (s *Store) reapExpired(name string, now time.Time) bool {
+	dir := filepath.Join(s.Root, name)
+	// Most previews are live: check without the lock, which is store-wide, so
+	// a sweep does not make every publish, pin and extend queue behind it.
+	if m, err := readManifest(dir); err != nil || !m.Expired(now) {
+		return false
+	}
+	unlock, err := s.lockSlug(name)
+	if err != nil {
+		return false
+	}
+	defer unlock()
+	m, err := readManifest(dir)
+	if err != nil || !m.Expired(now) {
+		return false
+	}
+	if os.RemoveAll(dir) != nil {
+		return false
+	}
+	s.removed(name)
+	return true
 }
 
 func copyFile(src, dst string) error {
