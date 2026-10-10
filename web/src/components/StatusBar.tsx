@@ -29,7 +29,7 @@ export function StatusBar(props: {
         <li>{formatBytes(props.status.diskBytes)}</li>
       </ul>
       <button class="btn quiet account" type="button" onClick={() => props.onAccount()}>
-        {props.accountLabel}
+        <span class="account-label">{props.accountLabel}</span>
       </button>
     </header>
   );

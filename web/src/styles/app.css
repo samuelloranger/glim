@@ -269,6 +269,11 @@ select {
     min-width: 0;
     max-width: 55%;
     margin-left: auto;
+  }
+
+  /* The button is a flex container, so the ellipsis needs its own box. */
+  .account-label {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -305,6 +310,10 @@ select {
     flex: 1;
     width: auto;
     min-width: 0;
+  }
+
+  .filters select {
+    max-width: 45%;
   }
 
   /* iOS zooms into inputs under 16px on focus. */
