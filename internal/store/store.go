@@ -172,8 +172,10 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		if err := copyFile(abs, filepath.Join(tmp, "index.html")); err != nil {
 			return PublishResult{}, err
 		}
-		if page, err := os.ReadFile(abs); err == nil && info.Size() <= maxConvertBytes {
-			copySiblingAssets(filepath.Dir(abs), tmp, page)
+		if info.Size() <= maxConvertBytes {
+			if page, err := os.ReadFile(abs); err == nil {
+				copySiblingAssets(filepath.Dir(abs), tmp, page)
+			}
 		}
 	}
 
