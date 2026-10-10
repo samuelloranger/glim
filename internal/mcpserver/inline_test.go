@@ -162,3 +162,34 @@ func TestPresentContentRepublishKeepsTitle(t *testing.T) {
 		t.Fatalf("title = %q, want the stored one kept", m.Title)
 	}
 }
+
+func TestPresentContentTitleSkipsCodeBlockHeadings(t *testing.T) {
+	isolateTmp(t)
+	s := newTestStore(t)
+	md := "```bash\n# install\nmake\n```\n\n## Setup\n\n# Real Title\n"
+	res, err := publishPreview(s, time.Hour, PresentInput{Content: md, Format: "md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Get(res.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Title != "Real Title" {
+		t.Fatalf("title = %q, want the first real H1", m.Title)
+	}
+}
+
+func TestPresentContentRepublishRendersStoredTitle(t *testing.T) {
+	isolateTmp(t)
+	s := newTestStore(t)
+	if _, err := publishPreview(s, time.Hour, PresentInput{Content: "one", Format: "txt", Title: "Notes", Name: "notes"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := publishPreview(s, time.Hour, PresentInput{Content: "two", Format: "txt", Name: "notes"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readIndex(t, s.Root, "notes"); !strings.Contains(got, "<title>Notes") {
+		t.Fatalf("rendered page lost the stored title:\n%s", got)
+	}
+}

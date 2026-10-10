@@ -2,10 +2,13 @@ package store
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/samuelloranger/glim/internal/render"
 )
 
 // MaxInlineBytes caps inline content, the same cap as files converted to HTML.
@@ -15,8 +18,7 @@ const MaxInlineBytes = maxConvertBytes
 var InlineFormats = []string{"html", "md", "txt", "json"}
 
 var (
-	titleTagRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	mdHeadRe   = regexp.MustCompile(`(?m)^#{1,6}[ \t]+(.+?)[ \t#]*$`)
+	titleTagRe = regexp.MustCompile(`(?is)<title(?:\s[^>]*)?>(.*?)</title>`)
 )
 
 // NormalizeInlineFormat returns the canonical format for f, defaulting an empty
@@ -34,26 +36,24 @@ func NormalizeInlineFormat(f string) (string, error) {
 	return "", fmt.Errorf("invalid format %q: use one of %s", f, strings.Join(InlineFormats, ", "))
 }
 
-// InlineTitle picks a default title for content: the first <title> for html,
-// the first heading for md, else "preview". When reusing an existing name it
-// returns "" instead of "preview", so a republish keeps the stored title.
-func InlineTitle(content, format string, reusing bool) string {
+// InlineTitle picks a title for inline content: the page's own <title> (html)
+// or first level-1 heading (md); else stored, the title of the preview being
+// republished; else "preview".
+func InlineTitle(content, format, stored string) string {
 	t := ""
 	switch format {
 	case "html":
 		if m := titleTagRe.FindStringSubmatch(content); m != nil {
-			t = m[1]
+			t = html.UnescapeString(m[1])
 		}
 	case "md":
-		if m := mdHeadRe.FindStringSubmatch(content); m != nil {
-			t = m[1]
-		}
+		t = render.MarkdownTitle([]byte(content))
 	}
 	t = strings.Join(strings.Fields(t), " ")
 	if t == "" {
-		if reusing {
-			return ""
-		}
+		t = stored
+	}
+	if t == "" {
 		return "preview"
 	}
 	if r := []rune(t); len(r) > 80 {

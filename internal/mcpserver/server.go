@@ -167,13 +167,16 @@ func presentPreview(s *store.Store, mu *sync.Mutex, defaultTTL time.Duration, en
 // presentSource resolves what in publishes: its path, or its inline content
 // staged into a private temp directory that cleanup (always non-nil) removes.
 // title is in.Title, or for content a default taken from the content.
-func presentSource(in PresentInput) (path string, relative bool, title string, cleanup func(), err error) {
+func presentSource(s *store.Store, in PresentInput) (path string, relative bool, title string, cleanup func(), err error) {
 	cleanup = func() {}
 	title = in.Title
 	switch {
 	case in.Path != "" && in.Content != "":
 		return "", false, "", cleanup, fmt.Errorf("pass either path or content, not both")
 	case in.Path == "" && in.Content == "":
+		if in.Format != "" {
+			return "", false, "", cleanup, fmt.Errorf("format needs content: pass the page text in content")
+		}
 		return "", false, "", cleanup, fmt.Errorf("pass path (a file or directory to publish) or content (the page itself)")
 	case in.Content == "":
 		if in.Format != "" {
@@ -187,7 +190,13 @@ func presentSource(in PresentInput) (path string, relative bool, title string, c
 		return "", false, "", cleanup, err
 	}
 	if title == "" {
-		title = store.InlineTitle(in.Content, format, in.Name != "")
+		stored := ""
+		if in.Name != "" {
+			if m, err := s.Get(in.Name); err == nil {
+				stored = m.Title
+			}
+		}
+		title = store.InlineTitle(in.Content, format, stored)
 	}
 	path, cleanup, err = store.StageInline(in.Content, format, title)
 	return path, false, title, cleanup, err
@@ -196,7 +205,7 @@ func presentSource(in PresentInput) (path string, relative bool, title string, c
 // publishPreview validates the ttl, whether explicit or the resolved default
 // (rejecting zero or negative lifetimes), and publishes the preview.
 func publishPreview(s *store.Store, defaultTTL time.Duration, in PresentInput) (store.PublishResult, error) {
-	path, relative, title, cleanup, err := presentSource(in)
+	path, relative, title, cleanup, err := presentSource(s, in)
 	defer cleanup()
 	if err != nil {
 		return store.PublishResult{}, err

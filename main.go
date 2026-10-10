@@ -103,7 +103,16 @@ func cmdPublish(args []string) error {
 		return fmt.Errorf("--password cannot be combined with reading the entry from stdin")
 	}
 	if entry == "-" {
-		staged, t, cleanup, err := stageStdin(os.Stdin, *o.format, *title, *name)
+		stored := ""
+		if *name != "" {
+			if m, err := store.New(cfg.Root, cfg.BaseURL()).Get(*name); err == nil {
+				stored = m.Title
+			}
+		}
+		if term.IsTerminal(int(os.Stdin.Fd())) {
+			fmt.Fprintln(os.Stderr, "reading the page from stdin; end with Ctrl-D")
+		}
+		staged, t, cleanup, err := stageStdin(os.Stdin, *o.format, *title, stored)
 		defer cleanup()
 		if err != nil {
 			return err
@@ -169,9 +178,9 @@ func newPublishFlags(defaultTTL time.Duration) (*flag.FlagSet, publishFlags) {
 
 // stageStdin reads the entry from r (capped at store.MaxInlineBytes) into a
 // private temp dir, as a file named for format. title falls back to one taken
-// from the content (none when name reuses a slug, so its title is kept).
+// from the content, then stored (the title of the preview being republished).
 // cleanup is always non-nil and removes the temp dir.
-func stageStdin(r io.Reader, format, title, name string) (entry, newTitle string, cleanup func(), err error) {
+func stageStdin(r io.Reader, format, title, stored string) (entry, newTitle string, cleanup func(), err error) {
 	noop := func() {}
 	if format, err = store.NormalizeInlineFormat(format); err != nil {
 		return "", "", noop, err
@@ -184,7 +193,7 @@ func stageStdin(r io.Reader, format, title, name string) (entry, newTitle string
 		return "", "", noop, fmt.Errorf("stdin is empty: nothing to publish")
 	}
 	if title == "" {
-		title = store.InlineTitle(string(data), format, name != "")
+		title = store.InlineTitle(string(data), format, stored)
 	}
 	entry, cleanup, err = store.StageInline(string(data), format, title)
 	return entry, title, cleanup, err
