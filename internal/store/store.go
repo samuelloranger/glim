@@ -168,8 +168,13 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		if err := publishConverted(abs, tmp, title, info.Size()); err != nil {
 			return PublishResult{}, err
 		}
-	} else if err := copyFile(abs, filepath.Join(tmp, "index.html")); err != nil {
-		return PublishResult{}, err
+	} else {
+		if err := copyFile(abs, filepath.Join(tmp, "index.html")); err != nil {
+			return PublishResult{}, err
+		}
+		if page, err := os.ReadFile(abs); err == nil && info.Size() <= maxConvertBytes {
+			copySiblingAssets(filepath.Dir(abs), tmp, page)
+		}
 	}
 
 	created := s.now()
@@ -272,7 +277,13 @@ func publishConverted(abs, tmp, title string, size int64) error {
 	if err != nil {
 		return fmt.Errorf("cannot publish %s: %w", base, err)
 	}
-	return os.WriteFile(filepath.Join(tmp, "index.html"), out, 0o644)
+	if err := os.WriteFile(filepath.Join(tmp, "index.html"), out, 0o644); err != nil {
+		return err
+	}
+	if ext := strings.ToLower(filepath.Ext(base)); ext == ".md" || ext == ".markdown" {
+		copySiblingAssets(filepath.Dir(abs), tmp, out)
+	}
+	return nil
 }
 
 func isImage(name string) bool {
