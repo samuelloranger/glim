@@ -88,11 +88,11 @@ func (l *Limiter) Release(user, ip string) {
 	}
 }
 
-// ReserveWindow counts one attempt against key, allowing at most max per
+// ReserveWindow counts one attempt against key, allowing at most limit per
 // window. It returns the wait until the oldest counted attempt leaves the
 // window, or 0 when the attempt was admitted (and counted). It is independent
 // of any client address, so rotating addresses cannot buy more attempts.
-func (l *Limiter) ReserveWindow(key string, max int, window time.Duration) time.Duration {
+func (l *Limiter) ReserveWindow(key string, limit int, window time.Duration) time.Duration {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -103,9 +103,9 @@ func (l *Limiter) ReserveWindow(key string, max int, window time.Duration) time.
 		i++
 	}
 	hits = hits[i:]
-	if len(hits) >= max {
+	if len(hits) >= limit {
 		l.caps[key] = hits
-		return hits[len(hits)-max].Add(window).Sub(now)
+		return hits[len(hits)-limit].Add(window).Sub(now)
 	}
 	l.caps[key] = append(hits, now)
 	return 0

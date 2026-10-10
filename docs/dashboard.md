@@ -80,8 +80,9 @@ Removing the last account brings back the "Create your account" form.
   only when the proxy connects from a loopback or private address. The
   right-most address that is not itself a loopback or private proxy is used.
   When every hop is private (a client on your own network), the right-most
-  hop, which the proxy appended, is used; a client-supplied entry is never
-  trusted.
+  hop, which the proxy appended, is used. A client on a private network can
+  still prepend a public address that is believed; per-account backoff and the
+  per-preview unlock cap bound what that buys.
 - The `glim_owner` cookie is scoped to `/` so it reaches previews. It is a
   signed marker tied to your session. It skips counting your own opens and
   bypasses [locked previews](./serving.md); it dies with the session and
