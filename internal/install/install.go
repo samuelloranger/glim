@@ -10,10 +10,25 @@ import (
 	"strings"
 )
 
-const SteeringRule = "To show the user any HTML, Markdown or other visual preview, call the glim `present` MCP tool " +
+// sandboxNote tells an agent what a preview page can and cannot do. Previews
+// are served with a sandbox Content-Security-Policy and no allow-same-origin,
+// so every page runs in an opaque origin.
+const sandboxNote = "Previews run in a sandbox: write a self-contained page; localStorage, sessionStorage, cookies, " +
+	"IndexedDB and service workers throw (wrap them in try/catch), fetch/XHR of the page's own files fails " +
+	"(inline the data), and scripts, styles and images from a CDN work."
+
+const steeringBase = "To show the user any HTML, Markdown or other visual preview, call the glim `present` MCP tool " +
 	"and give the user the returned link. To update a preview, call `present` again with the same `name`: " +
-	"the link stays the same, and open tabs usually refresh by themselves (live reload, on by default). " +
-	"Do not use Claude artifacts or other built-in preview mechanisms."
+	"the link stays the same, and open tabs usually refresh by themselves (live reload, on by default). "
+
+// SteeringRule is the rule written for Claude, which has its own artifacts.
+const SteeringRule = steeringBase + sandboxNote +
+	" Do not use Claude artifacts or other built-in preview mechanisms."
+
+// SteeringRuleOther is the rule written for Codex and Cursor, which have no
+// Claude artifacts to steer away from.
+const SteeringRuleOther = steeringBase + sandboxNote +
+	" Prefer it over other built-in preview mechanisms."
 
 const (
 	blockBeginMD   = "<!-- glim:managed -->"
@@ -104,7 +119,7 @@ func installCodex(d Deps) ([]string, error) {
 	}
 
 	path := filepath.Join(d.Home, ".codex", "AGENTS.md")
-	if err := upsertBlock(path, blockBeginMD, blockEndMD, SteeringRule); err != nil {
+	if err := upsertBlock(path, blockBeginMD, blockEndMD, SteeringRuleOther); err != nil {
 		return steps, err
 	}
 	steps = append(steps, "wrote steering rule to "+path)
@@ -133,7 +148,7 @@ func installCursor(d Deps) ([]string, error) {
 	steps = append(steps, "registered glim MCP server in "+mcpPath)
 
 	rule := filepath.Join(d.Home, ".cursor", "rules", "glim.mdc")
-	body := cursorRuleBody(cursorRuleDescription, SteeringRule)
+	body := cursorRuleBody(cursorRuleDescription, SteeringRuleOther)
 	if err := os.MkdirAll(filepath.Dir(rule), 0o755); err != nil {
 		return steps, err
 	}
@@ -148,6 +163,11 @@ func installCursor(d Deps) ([]string, error) {
 // into managed blocks. They are recognised as glim's own content so an
 // upgrade replaces them instead of treating them as foreign text.
 var legacySteeringRules = []string{
+	// The wording before the sandbox note, written for every agent.
+	"To show the user any HTML, Markdown or other visual preview, call the glim `present` MCP tool " +
+		"and give the user the returned link. To update a preview, call `present` again with the same `name`: " +
+		"the link stays the same, and open tabs usually refresh by themselves (live reload, on by default). " +
+		"Do not use Claude artifacts or other built-in preview mechanisms.",
 	"To show the user any HTML or visual preview, call the glim `present` MCP tool " +
 		"and give the user the returned link. Do not use Claude artifacts or other built-in preview mechanisms.",
 }
@@ -225,15 +245,15 @@ func splitBlock(path, begin, end, inner, body string, remove bool, eol string) (
 	return body, foreign, err
 }
 
-// splitTextBlock treats whole lines equal to the current body, SteeringRule
-// or a known legacy rule as glim's own content. Everything else is foreign.
+// splitTextBlock treats whole lines equal to the current body, either
+// steering rule or a known legacy rule as glim's own content. Everything else is foreign.
 // A rule embedded in a longer line is not glim's. If the block holds text but
 // no known body, an older glim rule cannot be told from foreign text, so it
 // refuses rather than guess.
 func splitTextBlock(path, begin, end, inner, body string) (string, error) {
 	lines := splitLines(inner)
 	var known [][]string
-	for _, k := range append([]string{body, SteeringRule}, legacySteeringRules...) {
+	for _, k := range append([]string{body, SteeringRule, SteeringRuleOther}, legacySteeringRules...) {
 		if k != "" {
 			known = append(known, strings.Split(k, "\n"))
 		}

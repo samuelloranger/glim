@@ -82,11 +82,36 @@ republishes with `name` and omits `password`, the existing password is kept.
 tool input, it passes through the agent's context; use the `glim lock` command
 yourself if you would rather the agent never sees it.
 
+## What a preview page can do
+
+Previews are served with `Content-Security-Policy: sandbox allow-scripts
+allow-forms allow-popups allow-modals allow-downloads`, with no
+`allow-same-origin`, so every page runs in an opaque origin. Checked in headless
+Chrome:
+
+| Feature | Result |
+| --- | --- |
+| Inline `<script>`, inline `<style>`, `eval` | works |
+| Scripts, stylesheets, images and iframes from a CDN | work |
+| Web fonts from a CDN | not verified |
+| `fetch` to another site | no-CORS requests go through; reading the response needs that site to send CORS headers (cdnjs does) |
+| `fetch`/XHR of the preview's own files | fails (no CORS headers for an opaque origin): inline the data instead |
+| Relative `<img>`, `<script>`, `<link>` | work |
+| `localStorage`, `sessionStorage`, `document.cookie` | throw `SecurityError` |
+| `indexedDB`, Cache API, service workers | throw `SecurityError` |
+| `#fragment` navigation, blob Workers, forms, popups, modals, downloads | allowed (a popup still needs a user gesture) |
+
+So the agent should ship a self-contained page, wrap any storage call in
+`try/catch`, and keep data inline. The steering rule, the skill and the
+`present` tool description all say this.
+
 ## Why a rule as well as a tool
 
 Registering the tool makes it available, but some agents have a built-in preview
 mechanism they would otherwise reach for. The steering rule tells the agent to use
-glim's `present` tool for previews. Both together make it reliable.
+glim's `present` tool for previews. Both together make it reliable. Claude's rule
+also names Claude artifacts; the Codex and Cursor rule does not, since those
+agents have none.
 
 A `ttl` (on `present` and `extend`) must be greater than zero; zero or negative
 values are rejected with an error instead of creating an already-expired preview.
