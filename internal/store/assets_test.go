@@ -3,6 +3,8 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -151,5 +153,118 @@ func TestLocalRef(t *testing.T) {
 		if got, ok := localRef(in); ok {
 			t.Errorf("localRef(%q) = %q, want rejected", in, got)
 		}
+	}
+}
+
+func TestCopyAssetFileRejectsSymlinkSwap(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "a.png")
+	writeIn(t, root, "a.png", "REAL")
+	writeIn(t, root, "secret.txt", "SECRET")
+	want, ok := plainFileInfo(root, "a.png")
+	if !ok {
+		t.Fatal("plainFileInfo rejected a regular file")
+	}
+	// Hold the original inode so a replacement file cannot reuse it.
+	if err := os.Link(src, filepath.Join(root, "keep")); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(src)
+	if err := os.Symlink(filepath.Join(root, "secret.txt"), src); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	out := filepath.Join(t.TempDir(), "a.png")
+	if _, err := copyAssetFile(src, out, want, maxAssetTotal); err == nil {
+		t.Error("symlink swapped in after the check was followed")
+	}
+	// A different regular file at the same path is also refused.
+	os.Remove(src)
+	writeIn(t, root, "b.png", "OTHER")
+	if err := os.Rename(filepath.Join(root, "b.png"), src); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := copyAssetFile(src, out, want, maxAssetTotal); err == nil {
+		t.Error("replaced file accepted")
+	}
+}
+
+func TestCopyAssetFileRejectsFIFO(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "p.png")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Skip("mkfifo unavailable:", err)
+	}
+	fi, err := os.Lstat(fifo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := copyAssetFile(fifo, filepath.Join(t.TempDir(), "p.png"), fi, maxAssetTotal)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("FIFO copied")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("copy of a FIFO blocked")
+	}
+	// Through the public path it is skipped without hanging too.
+	dst := t.TempDir()
+	copySiblingAssets(dir, dst, []byte(`<img src="p.png">`))
+	if exists(filepath.Join(dst, "p.png")) {
+		t.Error("FIFO copied by copySiblingAssets")
+	}
+}
+
+func TestCopyAssetFileStopsAtSizeCap(t *testing.T) {
+	src := t.TempDir()
+	// File reported small by the earlier Lstat but larger when opened (it grew).
+	writeIn(t, src, "g.bin", "x")
+	want, _ := plainFileInfo(src, "g.bin")
+	f, err := os.OpenFile(filepath.Join(src, "g.bin"), os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(maxAssetBytes + 10); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	out := filepath.Join(t.TempDir(), "g.bin")
+	if _, err := copyAssetFile(filepath.Join(src, "g.bin"), out, want, maxAssetTotal); err == nil {
+		t.Error("grown file over the cap was accepted")
+	}
+	// The remaining total budget also bounds actual bytes copied.
+	writeIn(t, src, "h.bin", strings.Repeat("y", 100))
+	wh, _ := plainFileInfo(src, "h.bin")
+	if _, err := copyAssetFile(filepath.Join(src, "h.bin"), filepath.Join(t.TempDir(), "h.bin"), wh, 10); err == nil {
+		t.Error("copy exceeded the remaining budget")
+	}
+}
+
+func TestSiblingAssetsOnlyFromRealTags(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "p")
+	writeIn(t, src, "r.md", "# R\n\n```html\n<img src=secret.png>\n```\n\nInline `<img src=inline.png>` and ![r](real.png).\n\nEscaped &lt;img src=esc.png&gt; text.\n")
+	for _, n := range []string{"secret.png", "inline.png", "real.png", "esc.png"} {
+		writeIn(t, src, n, "X")
+	}
+	s := newTestStore(t)
+	res, err := s.Publish(filepath.Join(src, "r.md"), "", "", "", time.Hour, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n, want := range map[string]bool{"secret.png": false, "inline.png": false, "esc.png": false, "real.png": true} {
+		if got := exists(filepath.Join(s.Root, res.Name, n)); got != want {
+			t.Errorf("%s copied=%v want %v", n, got, want)
+		}
+	}
+	dst := t.TempDir()
+	writeIn(t, src, "c.png", "X")
+	copySiblingAssets(src, dst, []byte("<!-- <img src=c.png> --><script>var a='<img src=c.png>'</script>"))
+	if exists(filepath.Join(dst, "c.png")) {
+		t.Error("asset referenced only in comment/script was copied")
 	}
 }
