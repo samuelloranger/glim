@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -370,9 +371,14 @@ func TestLive(t *testing.T) {
 	if _, ok := s.Live(res.Name); ok {
 		t.Fatal("expired preview should not be live")
 	}
+	if err := s.Pin(res.Name); err == nil {
+		t.Fatal("pinning an expired preview should fail")
+	}
+	now = now.Add(-90 * time.Minute)
 	if err := s.Pin(res.Name); err != nil {
 		t.Fatal(err)
 	}
+	now = now.Add(5 * time.Hour)
 	if _, ok := s.Live(res.Name); !ok {
 		t.Fatal("pinned preview should be live even past expiry")
 	}
@@ -569,6 +575,158 @@ func TestHiddenDirsIgnoredAndStaleOnesGCd(t *testing.T) {
 	for _, p := range []string{stale, staleOld} {
 		if _, err := os.Stat(p); err == nil {
 			t.Fatalf("%s not collected", p)
+		}
+	}
+}
+
+func TestLongTitleNameIsLive(t *testing.T) {
+	s := newTestStore(t)
+	entry := writeTemp(t, "a.html", "<p>x</p>")
+	res, err := s.Publish(entry, strings.Repeat("word ", 20), "", "", time.Hour, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ValidName(res.Name) {
+		t.Fatalf("name %q (len %d) fails ValidName", res.Name, len(res.Name))
+	}
+	if _, ok := s.Live(res.Name); !ok {
+		t.Fatal("long-titled preview is not live")
+	}
+	if err := s.Pin(res.Name); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepublishKeepsPinTitleProject(t *testing.T) {
+	for _, hash := range []string{"", "$2a$10$newhashnewhashnewhashnewhashnewhashnewhashnewhash"} {
+		s := newTestStore(t)
+		entry := writeTemp(t, "a.html", "a")
+		if _, err := s.Publish(entry, "Title", "proj", "", time.Hour, "keep-abcd"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Pin("keep-abcd"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.PublishLocked(entry, "", "", "", time.Hour, "keep-abcd", hash); err != nil {
+			t.Fatal(err)
+		}
+		m, _ := s.Get("keep-abcd")
+		if !m.Pinned || m.Title != "Title" || m.Project != "proj" {
+			t.Errorf("hash %q: republish lost metadata: %+v", hash, m)
+		}
+		if _, err := s.PublishLocked(entry, "New", "other", "", time.Hour, "keep-abcd", hash); err != nil {
+			t.Fatal(err)
+		}
+		m, _ = s.Get("keep-abcd")
+		if m.Title != "New" || m.Project != "other" {
+			t.Errorf("hash %q: explicit title/project not applied: %+v", hash, m)
+		}
+	}
+}
+
+func TestPinExtendRefuseExpired(t *testing.T) {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	s := newTestStore(t)
+	s.Now = func() time.Time { return base }
+	res, _ := s.Publish(writeTemp(t, "a.html", "a"), "x", "", "", time.Hour, "")
+	s.Now = func() time.Time { return base.Add(2 * time.Hour) }
+	if err := s.Extend(res.Name, time.Hour); err == nil || !strings.Contains(err.Error(), "no such preview") {
+		t.Fatalf("Extend on expired = %v, want no such preview", err)
+	}
+	if err := s.Pin(res.Name); err == nil || !strings.Contains(err.Error(), "no such preview") {
+		t.Fatalf("Pin on expired = %v, want no such preview", err)
+	}
+	if _, ok := s.Live(res.Name); ok {
+		t.Fatal("expired preview was revived")
+	}
+}
+
+func TestExtendCapsTTL(t *testing.T) {
+	s := newTestStore(t)
+	res, _ := s.Publish(writeTemp(t, "a.html", "a"), "x", "", "", time.Hour, "")
+	if err := s.Extend(res.Name, MaxTTL+time.Second); err == nil {
+		t.Fatal("want error beyond MaxTTL")
+	}
+	if err := s.Extend(res.Name, MaxTTL); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Extend(res.Name, 0); err == nil {
+		t.Fatal("want error for zero ttl")
+	}
+}
+
+// An extend racing GC over an expired-looking preview must never lose the
+// extension: either the extend fails (GC won) or the preview survives.
+func TestGCNeverRemovesConcurrentlyExtended(t *testing.T) {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 30; i++ {
+		s := newTestStore(t)
+		s.Now = func() time.Time { return base }
+		res, _ := s.Publish(writeTemp(t, "a.html", "a"), "x", "", "", time.Hour, "")
+		s.Now = func() time.Time { return base.Add(time.Hour + time.Second) }
+		var wg sync.WaitGroup
+		var extendErr error
+		wg.Add(2)
+		go func() { defer wg.Done(); extendErr = s.Extend(res.Name, time.Hour) }()
+		go func() { defer wg.Done(); _, _ = s.GC() }()
+		wg.Wait()
+		_, live := s.Live(res.Name)
+		if extendErr == nil && !live {
+			t.Fatal("extend succeeded but GC removed the preview")
+		}
+	}
+}
+
+// GC must re-check expiry under the slug lock: a preview extended after the
+// directory scan but before removal survives.
+func TestReapExpiredRechecksUnderLock(t *testing.T) {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	s := newTestStore(t)
+	s.Now = func() time.Time { return base }
+	res, _ := s.Publish(writeTemp(t, "a.html", "a"), "x", "", "", time.Hour, "")
+	stale := base.Add(2 * time.Hour) // the scan's view of "now"
+	s.Now = func() time.Time { return base.Add(30 * time.Minute) }
+	if err := s.Extend(res.Name, 3*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if s.reapExpired(res.Name, stale) {
+		t.Fatal("reaped a preview that was extended past the scan time")
+	}
+	if _, ok := s.Live(res.Name); !ok {
+		t.Fatal("extended preview lost")
+	}
+}
+
+func TestManifestWriteIsAtomic(t *testing.T) {
+	s := newTestStore(t)
+	res, _ := s.Publish(writeTemp(t, "a.html", "a"), "x", "", "", time.Hour, "")
+	dir := filepath.Join(s.Root, res.Name)
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = s.Extend(res.Name, time.Hour)
+			}
+		}
+	}()
+	for i := 0; i < 2000; i++ {
+		if _, err := readManifest(dir); err != nil {
+			close(stop)
+			<-done
+			t.Fatalf("reader saw a partial manifest: %v", err)
+		}
+	}
+	close(stop)
+	<-done
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), manifestTmpPrefix) {
+			t.Errorf("temp manifest left behind: %s", e.Name())
 		}
 	}
 }

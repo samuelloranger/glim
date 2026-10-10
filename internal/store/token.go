@@ -57,6 +57,10 @@ func ValidName(name string) bool {
 
 func NewName(label string) string {
 	slug := Slugify(label)
+	// Leave room for "-" and the suffix so the name always passes ValidName.
+	if limit := maxSlugLen - 1 - SuffixLen; len(slug) > limit {
+		slug = strings.Trim(slug[:limit], "-")
+	}
 	if slug == "" {
 		slug = "preview"
 	}
