@@ -95,7 +95,7 @@ func cmdPublish(args []string) error {
 		return err
 	}
 	if entry == "" || fs.NArg() != 0 {
-		return fmt.Errorf("usage: glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local]")
+		return fmt.Errorf("usage: glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local] [--qr] [--json]")
 	}
 	if *o.format != "" && entry != "-" {
 		return fmt.Errorf("--format only applies when reading the entry from stdin (glim -)")
