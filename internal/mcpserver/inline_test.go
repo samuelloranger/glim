@@ -144,3 +144,21 @@ func TestPresentContentNameReuse(t *testing.T) {
 		t.Fatalf("not replaced in place:\n%s", got)
 	}
 }
+
+func TestPresentContentRepublishKeepsTitle(t *testing.T) {
+	isolateTmp(t)
+	s := newTestStore(t)
+	if _, err := publishPreview(s, time.Hour, PresentInput{Content: "<p>v1</p>", Title: "Kept Title", Name: "kept"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := publishPreview(s, time.Hour, PresentInput{Content: "<p>v2</p>", Name: "kept"}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Get("kept")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Title != "Kept Title" {
+		t.Fatalf("title = %q, want the stored one kept", m.Title)
+	}
+}

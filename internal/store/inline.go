@@ -35,8 +35,9 @@ func NormalizeInlineFormat(f string) (string, error) {
 }
 
 // InlineTitle picks a default title for content: the first <title> for html,
-// the first heading for md, else "preview".
-func InlineTitle(content, format string) string {
+// the first heading for md, else "preview". When reusing an existing name it
+// returns "" instead of "preview", so a republish keeps the stored title.
+func InlineTitle(content, format string, reusing bool) string {
 	t := ""
 	switch format {
 	case "html":
@@ -50,6 +51,9 @@ func InlineTitle(content, format string) string {
 	}
 	t = strings.Join(strings.Fields(t), " ")
 	if t == "" {
+		if reusing {
+			return ""
+		}
 		return "preview"
 	}
 	if r := []rune(t); len(r) > 80 {

@@ -165,7 +165,7 @@ func TestStageStdin(t *testing.T) {
 		{"json", `{"a":1}`, "preview.json", "preview"},
 	}
 	for _, c := range cases {
-		entry, title, cleanup, err := stageStdin(strings.NewReader(c.in), c.format, "")
+		entry, title, cleanup, err := stageStdin(strings.NewReader(c.in), c.format, "", "")
 		if err != nil {
 			t.Fatalf("%q: %v", c.format, err)
 		}
@@ -181,7 +181,7 @@ func TestStageStdin(t *testing.T) {
 			t.Errorf("%q: temp dir not removed", c.format)
 		}
 	}
-	_, title, cleanup, err := stageStdin(strings.NewReader("x"), "txt", "Given")
+	_, title, cleanup, err := stageStdin(strings.NewReader("x"), "txt", "Given", "")
 	if err != nil || title != "Given" {
 		t.Errorf("explicit title lost: %q %v", title, err)
 	}
@@ -189,13 +189,13 @@ func TestStageStdin(t *testing.T) {
 }
 
 func TestStageStdinErrors(t *testing.T) {
-	if _, _, _, err := stageStdin(strings.NewReader(""), "", ""); err == nil {
+	if _, _, _, err := stageStdin(strings.NewReader(""), "", "", ""); err == nil {
 		t.Error("empty stdin should fail")
 	}
-	if _, _, _, err := stageStdin(strings.NewReader("x"), "pdf", ""); err == nil {
+	if _, _, _, err := stageStdin(strings.NewReader("x"), "pdf", "", ""); err == nil {
 		t.Error("bad format should fail")
 	}
-	if _, _, _, err := stageStdin(strings.NewReader(strings.Repeat("a", 20<<20+1)), "", ""); err == nil || !strings.Contains(err.Error(), "20 MB") {
+	if _, _, _, err := stageStdin(strings.NewReader(strings.Repeat("a", 20<<20+1)), "", "", ""); err == nil || !strings.Contains(err.Error(), "20 MB") {
 		t.Errorf("oversize err = %v", err)
 	}
 }

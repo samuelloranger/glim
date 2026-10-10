@@ -103,7 +103,7 @@ func cmdPublish(args []string) error {
 		return fmt.Errorf("--password cannot be combined with reading the entry from stdin")
 	}
 	if entry == "-" {
-		staged, t, cleanup, err := stageStdin(os.Stdin, *o.format, *title)
+		staged, t, cleanup, err := stageStdin(os.Stdin, *o.format, *title, *name)
 		defer cleanup()
 		if err != nil {
 			return err
@@ -169,8 +169,9 @@ func newPublishFlags(defaultTTL time.Duration) (*flag.FlagSet, publishFlags) {
 
 // stageStdin reads the entry from r (capped at store.MaxInlineBytes) into a
 // private temp dir, as a file named for format. title falls back to one taken
-// from the content. cleanup is always non-nil and removes the temp dir.
-func stageStdin(r io.Reader, format, title string) (entry, newTitle string, cleanup func(), err error) {
+// from the content (none when name reuses a slug, so its title is kept).
+// cleanup is always non-nil and removes the temp dir.
+func stageStdin(r io.Reader, format, title, name string) (entry, newTitle string, cleanup func(), err error) {
 	noop := func() {}
 	if format, err = store.NormalizeInlineFormat(format); err != nil {
 		return "", "", noop, err
@@ -183,7 +184,7 @@ func stageStdin(r io.Reader, format, title string) (entry, newTitle string, clea
 		return "", "", noop, fmt.Errorf("stdin is empty: nothing to publish")
 	}
 	if title == "" {
-		title = store.InlineTitle(string(data), format)
+		title = store.InlineTitle(string(data), format, name != "")
 	}
 	entry, cleanup, err = store.StageInline(string(data), format, title)
 	return entry, title, cleanup, err

@@ -187,7 +187,7 @@ func presentSource(in PresentInput) (path string, relative bool, title string, c
 		return "", false, "", cleanup, err
 	}
 	if title == "" {
-		title = store.InlineTitle(in.Content, format)
+		title = store.InlineTitle(in.Content, format, in.Name != "")
 	}
 	path, cleanup, err = store.StageInline(in.Content, format, title)
 	return path, false, title, cleanup, err
