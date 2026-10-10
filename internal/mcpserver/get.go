@@ -20,14 +20,14 @@ import (
 
 const (
 	// maxSourceBytes caps the source text get returns.
-	maxSourceBytes = 200 << 10
+	maxSourceBytes = 64 << 10
 	// maxFileList caps the file paths listed for a directory publish.
 	maxFileList = 200
 )
 
 type GetInput struct {
 	Name          string `json:"name" jsonschema:"the preview slug to inspect"`
-	IncludeSource bool   `json:"include_source,omitempty" jsonschema:"also return the published source text: the original file for a converted Markdown/text/JSON file, else index.html (capped at 200 KB). Images are never returned, only their name and size."`
+	IncludeSource bool   `json:"include_source,omitempty" jsonschema:"also return the published source text: the original file for a converted Markdown/text/JSON file, else index.html (capped at 64 KB). Images are never returned, only their name and size."`
 }
 
 type GetOutput struct {
@@ -45,7 +45,7 @@ type GetOutput struct {
 	SourceFile     string   `json:"sourceFile,omitempty" jsonschema:"with include_source: the file the source was read from, relative to the preview"`
 	SourceSize     int64    `json:"sourceSize,omitempty" jsonschema:"with include_source: size in bytes of that file"`
 	Source         string   `json:"source,omitempty" jsonschema:"with include_source: the published source text; omitted for binary files"`
-	Truncated      bool     `json:"truncated,omitempty" jsonschema:"true when source was cut at 200 KB"`
+	Truncated      bool     `json:"truncated,omitempty" jsonschema:"true when source was cut at 64 KB"`
 	Binary         bool     `json:"binary,omitempty" jsonschema:"true when the source is binary (an image): only its name and size are returned"`
 	Files          []string `json:"files,omitempty" jsonschema:"with include_source on a directory publish: the other file paths, relative, at most 200"`
 	FilesTruncated bool     `json:"filesTruncated,omitempty" jsonschema:"true when more than 200 files exist and files is cut"`
@@ -199,7 +199,7 @@ func registerGet(server *mcp.Server, s *store.Store, mu *sync.Mutex, views func(
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get",
-		Description: "Inspect one live preview by its slug: title, project, link, expiry, lock state, views and times. With include_source, also read back what was published (the original Markdown/text for a converted file, else index.html; capped at 200 KB), plus the other file paths of a directory publish.",
+		Description: "Inspect one live preview by its slug: title, project, link, expiry, lock state, views and times. With include_source, also read back what was published (the original Markdown/text for a converted file, else index.html; capped at 64 KB), plus the other file paths of a directory publish.",
 		// Pure read: no mutation, idempotent, closed domain.
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,

@@ -115,7 +115,7 @@ get(name, include_source?) → { name, url, title?, project?, pinned, expires?, 
 published. `expires` is omitted for pinned previews, and the password hash is
 never returned. With `include_source: true` it also returns the published
 source: the original file for a converted Markdown, text or JSON file, otherwise
-`index.html`, capped at 200 KB (`truncated: true` when cut). For a directory
+`index.html`, capped at 64 KB (`truncated: true` when cut). For a directory
 publish it returns `index.html` and lists the other file paths (relative, at
 most 200). Images are never returned, only their file name and size
 (`binary: true`). An unknown or expired slug gives the same "no such preview"
