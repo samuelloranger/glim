@@ -60,6 +60,7 @@ type PublishResult struct {
 	URL     string
 	Expires time.Time
 	Locked  bool
+	Pinned  bool
 }
 
 // AllowedFileExts is the single place that decides which single-file entries
@@ -156,6 +157,7 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		return PublishResult{}, err
 	}
 
+	source := ""
 	if info.IsDir() {
 		idx, err := os.Lstat(filepath.Join(abs, "index.html"))
 		if err != nil || !idx.Mode().IsRegular() {
@@ -168,6 +170,7 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		if err := publishConverted(abs, tmp, title, info.Size()); err != nil {
 			return PublishResult{}, err
 		}
+		source = filepath.Base(abs)
 	} else {
 		if err := copyFile(abs, filepath.Join(tmp, "index.html")); err != nil {
 			return PublishResult{}, err
@@ -188,6 +191,7 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 		Created: created,
 		Expires: created.Add(ttl),
 		Version: newVersion(),
+		Source:  source,
 	}
 	m.PasswordHash = passwordHash
 
@@ -255,7 +259,7 @@ func (s *Store) PublishLocked(entry, title, project, session string, ttl time.Du
 	unlock()
 	_, _ = s.GC()
 
-	return PublishResult{Name: name, URL: s.url(name), Expires: m.Expires, Locked: m.Locked()}, nil
+	return PublishResult{Name: name, URL: s.url(name), Expires: m.Expires, Locked: m.Locked(), Pinned: m.Pinned}, nil
 }
 
 // publishConverted renders a non-HTML file into tmp/index.html and keeps the
@@ -356,6 +360,9 @@ func (s *Store) removed(name string) {
 		s.OnRemove(name)
 	}
 }
+
+// Dir returns the directory holding a preview's files.
+func (s *Store) Dir(name string) string { return filepath.Join(s.Root, name) }
 
 func (s *Store) Get(name string) (Manifest, error) {
 	m, err := readManifest(filepath.Join(s.Root, name))

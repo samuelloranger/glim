@@ -14,7 +14,7 @@ Restart the agent afterwards so it loads the new MCP server.
 For each agent it does two things:
 
 1. **Registers the MCP server** — a single stdio server, `glim mcp`, exposing a
-   `present` tool.
+   `present` tool plus `list`, `get`, `revoke`, `pin` and `extend`.
 2. **Writes a steering rule** into the agent's global instructions so it prefers
    glim for previews rather than its own mechanism.
 
@@ -104,6 +104,26 @@ Chrome:
 So the agent should ship a self-contained page, wrap any storage call in
 `try/catch`, and keep data inline. The steering rule, the skill and the
 `present` tool description all say this.
+
+## The get tool
+
+```
+get(name, include_source?) → { name, url, title?, project?, pinned, expires?, locked?, views, lastSeen?, created, ... }
+```
+
+`get` inspects one live preview so a new session can read back what was
+published. `expires` is omitted for pinned previews, and the password hash is
+never returned. With `include_source: true` it also returns the published
+source: the original file for a converted Markdown, text or JSON file, otherwise
+`index.html`, capped at 200 KB (`truncated: true` when cut). For a directory
+publish it returns `index.html` and lists the other file paths (relative, at
+most 200). Images are never returned, only their file name and size
+(`binary: true`). An unknown or expired slug gives the same "no such preview"
+error as the other tools.
+
+`present` also states the slug and expiry in its text (`name: <slug> · expires:
+<RFC3339>`, or `pinned`) for clients that read only text, and `list` includes
+each preview's expiry.
 
 ## Why a rule as well as a tool
 

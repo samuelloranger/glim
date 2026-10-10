@@ -26,6 +26,10 @@ type Manifest struct {
 	// Version identifies one publish of the content. Pin, extend and lock
 	// rewrite the manifest but keep it, so it changes only on republish.
 	Version string `json:"version,omitempty"`
+	// Source is the base name of the original file kept next to index.html
+	// when a single non-HTML file was converted; empty otherwise (and for
+	// previews published before it was recorded).
+	Source string `json:"source,omitempty"`
 	// PasswordHash is a bcrypt hash; when set the preview is locked behind it.
 	PasswordHash string `json:"password_hash,omitempty"`
 }

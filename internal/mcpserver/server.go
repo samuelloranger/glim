@@ -258,7 +258,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 			return nil, PresentOutput{}, err
 		}
 		out := PresentOutput{URL: res.URL, Name: res.Name, Expires: res.Expires.Format(time.RFC3339), Locked: res.Locked}
-		text := "Preview published. Give the user this link: " + res.URL
+		text := "Preview published. Give the user this link: " + res.URL + "\n" + presentSummary(res)
 		if warning != "" {
 			text += "\n" + warning
 		}
@@ -295,6 +295,8 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 			text += "\n" + p.Name + " — " + p.URL
 			if p.Pinned {
 				text += " (pinned)"
+			} else {
+				text += " (expires " + p.Expires + ")"
 			}
 			if p.Views > 0 {
 				text += fmt.Sprintf(" (opened %d×, last %s)", p.Views, p.LastSeen)
@@ -391,6 +393,8 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 			OpenWorldHint:   boolPtr(false),
 		},
 	}, extend)
+
+	registerGet(server, s, &mu, views)
 
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
