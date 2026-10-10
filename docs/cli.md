@@ -3,7 +3,7 @@
 ## publish
 
 ```sh
-glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local] [--qr]
+glim <entry.html|dir|-> [--format html|md|txt|json] [--title T] [--project P] [--ttl 6h] [--name SLUG] [--password] [--local] [--qr] [--json]
 ```
 
 Copies `entry` into a new preview and prints its URL. A single file is served as
@@ -70,6 +70,7 @@ Publishing is deliberately conservative so you cannot expose files by accident:
 | `--name` | Reuse this exact slug to update in place at the same URL (created if absent). Omit for a fresh random link. |
 | `--password` | Protect the preview with a password (see [Password protection](#password-protection)). |
 | `--local` | Auto-start the built-in server and return a loopback link. |
+| `--json` | Print one JSON object on stdout instead of the plain URL, with the same fields the MCP `present` tool returns: `url`, `name`, `expires` (RFC3339) and `locked` (omitted when false). Nothing else goes to stdout, and the `expires` line and `--qr` code are suppressed: `--json` wins over `--qr`. Errors still go to stderr with a non-zero exit. |
 | `--qr` | Also print a scannable QR code of the URL (to stderr, so stdout stays the plain URL). |
 
 ## Updating a preview in place
@@ -121,6 +122,9 @@ server. Requires a domain to be set.
 
 ```sh
 glim ls                 # list live previews (name, title, age, expiry, views, last seen)
+glim ls --project P     # only previews published with --project P
+glim ls --json          # JSON array, same fields as the MCP list tool (name, url, title,
+                        # project, pinned, expires (omitted when pinned), views, locked, lastSeen)
 glim rm <name>...       # remove previews now
 glim gc                 # prune expired previews
 ```

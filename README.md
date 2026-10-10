@@ -56,11 +56,11 @@ email and password, so do that before exposing the server. See
 ## Commands
 
 ```
-glim <entry.html|dir|-> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr]  publish, print URL (`-` reads stdin)
+glim <entry.html|dir|-> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr] [--json]  publish, print URL or JSON (`-` reads stdin)
 glim serve [--bind ADDR] [--port N] [--root DIR]                       run the preview server
 glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h --live-reload true|false]  show or set config
 glim caddy                                                             print a reverse-proxy vhost
-glim ls | rm <name>... | gc                                           manage previews
+glim ls [--project P] [--json] | rm <name>... | gc                      manage previews
 glim extend <name> <ttl> | pin <name> | unpin <name>                  change a preview's lifetime
 glim <entry> --password | lock <name> | unlock <name>                 password-protect a preview
 glim open <name> | status                                             open a link / show status

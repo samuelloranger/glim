@@ -91,6 +91,18 @@ func listPreviews(s *store.Store, in ListInput, stats map[string]auth.ViewStat) 
 	return out, nil
 }
 
+// ListPreviews returns the live previews exactly as the MCP list tool does,
+// so the CLI's `ls --json` shares its field names and omission rules.
+func ListPreviews(s *store.Store, project string, stats map[string]auth.ViewStat) (ListOutput, error) {
+	return listPreviews(s, ListInput{Project: project}, stats)
+}
+
+// NewPresentOutput converts a publish result to the shape the MCP present tool
+// returns, so the CLI's `--json` output matches it.
+func NewPresentOutput(res store.PublishResult) PresentOutput {
+	return PresentOutput{URL: res.URL, Name: res.Name, Expires: res.Expires.Format(time.RFC3339), Locked: res.Locked}
+}
+
 func revokePreview(s *store.Store, in RevokeInput) (RevokeOutput, error) {
 	if err := s.Remove(in.Name); err != nil {
 		return RevokeOutput{}, err
@@ -298,7 +310,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 		if err != nil {
 			return nil, PresentOutput{}, err
 		}
-		out := PresentOutput{URL: res.URL, Name: res.Name, Expires: res.Expires.Format(time.RFC3339), Locked: res.Locked}
+		out := NewPresentOutput(res)
 		text := "Preview published. Give the user this link: " + res.URL + "\n" + presentSummary(res)
 		if warning != "" {
 			text += "\n" + warning
