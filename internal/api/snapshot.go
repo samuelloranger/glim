@@ -21,6 +21,8 @@ type Preview struct {
 	// Views counts real page opens; LastSeen is the latest one, null if never.
 	Views    int64      `json:"views"`
 	LastSeen *time.Time `json:"lastSeen"`
+	// Stamp changes on every republish; the push notifier watches it.
+	Stamp string `json:"-"`
 }
 
 type Status struct {
@@ -38,7 +40,7 @@ type Snapshot struct {
 
 func toPreview(st *store.Store, m store.Manifest, v auth.ViewStat) Preview {
 	p := Preview{Name: m.Name, Title: m.Title, Project: m.Project, Created: m.Created,
-		Expires: m.Expires, Pinned: m.Pinned, Locked: m.Locked(), URL: st.URL(m.Name), Views: v.Count}
+		Expires: m.Expires, Pinned: m.Pinned, Locked: m.Locked(), URL: st.URL(m.Name), Views: v.Count, Stamp: m.Stamp()}
 	if v.Count > 0 {
 		t := v.LastSeen
 		p.LastSeen = &t

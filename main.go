@@ -589,6 +589,10 @@ func cmdServe(args []string) error {
 		}
 	}
 	hub := api.NewHub(st, db, 2*time.Second, log.Printf)
+	if _, _, err := db.VAPIDKeys(ctx); err != nil {
+		return err
+	}
+	hub.SetNotifier(api.NewNotifier(db, api.WebPushSender{DB: db, Subscriber: pushSubscriber(base)}, log.Printf))
 	go hub.Run(ctx)
 	recorder := db.NewViewRecorder(hub.Poke)
 	defer recorder.Close()
@@ -898,6 +902,15 @@ func publicHost(base string) string {
 		return ""
 	}
 	return u.Host
+}
+
+// pushSubscriber is the VAPID "sub" contact claim: the public https base when
+// there is one, otherwise a placeholder mailto (push services need a valid URI).
+func pushSubscriber(base string) string {
+	if strings.HasPrefix(base, "https://") {
+		return strings.TrimRight(base, "/")
+	}
+	return "mailto:glim@example.com"
 }
 
 func hostFromBase(base string) string {

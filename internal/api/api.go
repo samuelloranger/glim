@@ -95,6 +95,9 @@ func (s *Server) routes() {
 	m.Handle("POST /_glim/api/users", s.authed(s.postUser))
 	m.Handle("DELETE /_glim/api/users/{email}", s.authed(s.deleteUser))
 	m.Handle("POST /_glim/api/account/password", s.authed(s.postPassword))
+	m.Handle("GET /_glim/api/push/key", s.authed(s.getPushKey))
+	m.Handle("POST /_glim/api/push/subscribe", s.authed(s.postPushSubscribe))
+	m.Handle("POST /_glim/api/push/unsubscribe", s.authed(s.postPushUnsubscribe))
 	m.HandleFunc("/_glim/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not_found", "No such endpoint.")
 	})

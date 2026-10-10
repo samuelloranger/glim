@@ -23,6 +23,7 @@ type Hub struct {
 	current Snapshot
 	fp      string
 	built   bool
+	notify  *Notifier
 }
 
 func NewHub(st *store.Store, a *auth.DB, interval time.Duration, logf func(string, ...any)) *Hub {
@@ -85,6 +86,9 @@ func (h *Hub) Rescan(force bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.fp, h.current, h.built = fp, snap, true
+	if h.notify != nil {
+		h.notify.Observe(snap)
+	}
 	for ch := range h.subs {
 		offer(ch, snap)
 	}
@@ -124,3 +128,6 @@ func (h *Hub) Subscribe() (<-chan Snapshot, Snapshot, func()) {
 		h.mu.Unlock()
 	}
 }
+
+// SetNotifier makes every rescan feed n; call it before Run.
+func (h *Hub) SetNotifier(n *Notifier) { h.notify = n }

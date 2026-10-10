@@ -51,10 +51,10 @@ func TestOpenCreatesPrivateFileAndMigratesIdempotently(t *testing.T) {
 	if err := db.sql.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 2 {
-		t.Fatalf("schema_migrations rows = %d, want 2", n)
+	if n != 3 {
+		t.Fatalf("schema_migrations rows = %d, want 3", n)
 	}
-	for _, table := range []string{"users", "sessions", "settings", "preview_views"} {
+	for _, table := range []string{"users", "sessions", "settings", "preview_views", "push_subscriptions"} {
 		if _, err := db.sql.Exec(`SELECT 1 FROM ` + table + ` LIMIT 1`); err != nil {
 			t.Errorf("table %s missing: %v", table, err)
 		}
