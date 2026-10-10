@@ -26,6 +26,27 @@ Use glim to show the user a preview of something you built.
 To update a preview, republish to the same link with ` + "`--name <slug>`" + `.
 
 Previews expire automatically. Remove one early with ` + "`glim rm <name>`" + `.
+`, `---
+name: glim
+description: Show the user an HTML, Markdown, text, JSON or image preview via a short-lived link. Use when a coding task benefits from a visual preview.
+---
+
+# glim
+
+Use glim to show the user a preview of something you built.
+
+1. Create a self-contained HTML file or directory (or a .md, .txt, .json or image file).
+2. Publish it: ` + "`glim <entry> --title <title>`" + `. ` + "`<entry>`" + ` is the file or directory.
+3. Give the user the link glim prints.
+
+To update a preview, republish to the same link with ` + "`--name <slug>`" + `. The link stays the
+same, and open tabs usually refresh by themselves (live reload, on by default).
+
+To keep a preview private, add ` + "`--password`" + ` and pipe the password (8 to 72 bytes) on stdin:
+` + "`printf '%s\\n' \"$PW\" | glim <entry> --password`" + `. Visitors must enter it first.
+Republishing with ` + "`--name`" + ` and no ` + "`--password`" + ` keeps the existing password.
+
+Previews expire automatically. Remove one early with ` + "`glim rm <name>`" + `.
 `}
 
 // SkillText is the SKILL.md written by `glim install --skill`.
@@ -44,6 +65,8 @@ Use glim to show the user a preview of something you built.
 
 To update a preview, republish to the same link with ` + "`--name <slug>`" + `. The link stays the
 same, and open tabs usually refresh by themselves (live reload, on by default).
+
+` + sandboxNote + `
 
 To keep a preview private, add ` + "`--password`" + ` and pipe the password (8 to 72 bytes) on stdin:
 ` + "`printf '%s\\n' \"$PW\" | glim <entry> --password`" + `. Visitors must enter it first.
@@ -131,7 +154,7 @@ func Uninstall(target string, d Deps) ([]string, error) {
 		rule := filepath.Join(d.Home, ".cursor", "rules", "glim.mdc")
 		var owned []string
 		for _, desc := range append([]string{cursorRuleDescription}, legacyCursorRuleDescriptions...) {
-			for _, r := range append([]string{SteeringRule}, legacySteeringRules...) {
+			for _, r := range append([]string{SteeringRule, SteeringRuleOther}, legacySteeringRules...) {
 				owned = append(owned, cursorRuleBody(desc, r))
 			}
 		}
