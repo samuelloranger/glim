@@ -130,3 +130,21 @@ func TestSelfFetchIsNotAView(t *testing.T) {
 		t.Errorf("self-fetches counted %d views", n)
 	}
 }
+
+func TestSelfFetchRedirectAndOtherMethods(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	publish(t, st, "demo-1234", map[string]string{"index.html": "<h1>x</h1>", "data/index.html": "<p>d</p>"}, time.Hour)
+	h := NewRouter(Options{Store: st})
+	null := map[string]string{"Origin": "null"}
+	rec := corsDo(h, "GET", "/demo-1234/data", null)
+	if rec.Code < 300 || rec.Code >= 400 {
+		t.Fatalf("directory without slash: status %d, want a redirect", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "null" {
+		t.Errorf("redirect ACAO = %q, want null so a CORS fetch can follow it", got)
+	}
+	rec = corsDo(h, "OPTIONS", "/demo-1234/", map[string]string{"Origin": "null", "Access-Control-Request-Method": "PUT"})
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("non-GET preflight got ACAO %q", got)
+	}
+}

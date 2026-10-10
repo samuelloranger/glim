@@ -91,7 +91,9 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 					w.WriteHeader(http.StatusNoContent)
 					return
 				}
-				w = &corsWriter{ResponseWriter: w}
+				if r.Method == http.MethodGet || r.Method == http.MethodHead {
+					w = &corsWriter{ResponseWriter: w}
+				}
 			}
 		}
 		if serveHTMLInjected(w, r, fsys, func(doc []byte) (string, string) {
@@ -137,7 +139,10 @@ type corsWriter struct {
 func (c *corsWriter) WriteHeader(code int) {
 	if !c.wrote {
 		c.wrote = true
-		if (code >= 200 && code < 300) || code == http.StatusNotModified {
+		// A CORS fetch must pass the check on every hop, so redirects (such as
+		// a directory's trailing-slash redirect) are tagged too; they carry no
+		// content.
+		if (code >= 200 && code < 400) && code != http.StatusMultipleChoices {
 			c.Header().Set("Access-Control-Allow-Origin", "null")
 		}
 	}
