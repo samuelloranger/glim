@@ -52,6 +52,9 @@ every preview, a countdown and a seen count for each one, and lets you extend, p
 them. It updates in real time. The first visit creates the account with an
 email and password, so do that before exposing the server. See
 [docs/dashboard.md](docs/dashboard.md).
+Over HTTPS it also installs as an app (iPhone Home Screen included) and can send a
+notification when a preview is published; see
+[docs/dashboard.md](docs/dashboard.md#install-as-an-app-and-notifications).
 
 ## Commands
 

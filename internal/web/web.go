@@ -59,6 +59,15 @@ func handler(files fs.FS) http.Handler {
 		} else {
 			h.Set("Cache-Control", "no-cache")
 		}
+		switch rel {
+		case "sw.js":
+			// Served under /_glim/ but it must control "/" and every preview
+			// path; browsers refuse that scope without this header.
+			h.Set("Content-Type", "text/javascript; charset=utf-8")
+			h.Set("Service-Worker-Allowed", "/")
+		case "manifest.webmanifest":
+			h.Set("Content-Type", "application/manifest+json")
+		}
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/" + rel
 		static.ServeHTTP(w, r2)

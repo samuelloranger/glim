@@ -62,6 +62,38 @@ glim user rm <email>
 
 Removing the last account brings back the "Create your account" form.
 
+## Install as an app and notifications
+
+The dashboard is an installable web app. Once installed it opens full screen
+from your Home Screen and can send a notification whenever a preview is
+published or republished, so you don't have to watch the terminal.
+
+This needs the dashboard served over HTTPS (a domain set with
+`glim config --domain https://...`, see [serving.md](serving.md)). Browsers
+only allow push notifications on secure origins.
+
+On iPhone (iOS 16.4 or later):
+
+1. Open the dashboard in Safari.
+2. Tap Share, then Add to Home Screen.
+3. Open glim from the Home Screen icon. Notifications are only available to
+   the installed app, not to a Safari tab.
+4. Open the account panel, find Notifications, and switch it on. Allow the
+   permission prompt.
+
+On desktop browsers the same switch is available without installing.
+
+Each notification reads "<title> published" (or "updated" for a republish) and
+opens the preview when tapped. There is at most one notification per preview
+every 30 seconds, and previews that already existed when `glim serve` started
+do not notify. Notifications go to every browser that has them switched on.
+Removing an account removes its subscriptions, and a subscription the push
+service reports as gone is dropped automatically.
+
+The server generates its push (VAPID) key pair the first time `glim serve`
+runs and keeps it in `~/.glim/glim.db`. Deleting that file means every device
+has to switch Notifications off and on again.
+
 ## Sign-in security
 
 - Accounts and sessions live in `~/.glim/glim.db`, readable only by you.
