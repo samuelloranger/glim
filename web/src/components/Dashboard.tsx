@@ -156,8 +156,16 @@ export function Dashboard(props: {
                     gone={live.leaving[p.name] === true}
                     now={clock.now()}
                     arriving={ready()}
-                    onExtend={(ttl, label) => void actions.extend(p.name, ttl, label)}
+                    onExtend={(ttl, label) =>
+                      void actions.extend(
+                        p.name,
+                        ttl,
+                        label,
+                        actions.overrides[p.name]?.pinned ?? p.pinned,
+                      )
+                    }
                     onPin={() => void actions.pin(p.name)}
+                    onUnpin={() => void actions.unpin(p.name)}
                     onRemove={() => setConfirming(p)}
                     onCopy={() => void copy(p)}
                   />
