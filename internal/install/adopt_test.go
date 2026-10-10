@@ -147,3 +147,81 @@ func TestCodexInstallRefusalLeavesConfigUntouched(t *testing.T) {
 		t.Fatal("steering rule written despite refusal")
 	}
 }
+
+func TestAdoptCRLFWithoutFinalNewlineEndsWithCRLF(t *testing.T) {
+	file := strings.TrimSuffix(crlf(tomlOther+"\n\n"+tomlOldBody+"\n"), "\r\n")
+	path := writeTemp(t, "config.toml", file)
+	if err := upsertBlock(path, blockBeginTOML, blockEndTOML, tomlBody); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, path)
+	if !strings.HasSuffix(got, blockEndTOML+"\r\n") {
+		t.Fatalf("want a CRLF terminated end marker, got %q", got)
+	}
+	if strings.Count(strings.ReplaceAll(got, "\r\n", ""), "\r") != 0 {
+		t.Fatalf("lone CR in %q", got)
+	}
+}
+
+func TestBOMFileGlimTableIsAdoptedAndRemoved(t *testing.T) {
+	file := "\ufeff" + tomlOldBody + "\n\n" + tomlOther + "\n"
+	path := writeTemp(t, "config.toml", file)
+	if err := upsertBlock(path, blockBeginTOML, blockEndTOML, tomlBody); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, path)
+	if want := "\ufeff" + tomlBlock(tomlBody) + "\n\n" + tomlOther + "\n"; got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	if n := strings.Count(got, "[mcp_servers.glim]"); n != 1 {
+		t.Fatalf("%d glim tables", n)
+	}
+	// Second run is stable, and a block on the BOM line is found again.
+	if err := upsertBlock(path, blockBeginTOML, blockEndTOML, tomlBody); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, path) != got {
+		t.Fatalf("second run changed file: %q", readFile(t, path))
+	}
+	ok, err := removeBlock(path, blockBeginTOML, blockEndTOML)
+	if err != nil || !ok {
+		t.Fatalf("remove: %v %v", ok, err)
+	}
+	if after := readFile(t, path); after != "\ufeff"+tomlOther+"\n" {
+		t.Fatalf("unexpected: %q", after)
+	}
+}
+
+func TestInlineMCPServersOnlyRefusedWhenItDefinesGlim(t *testing.T) {
+	ok := "[mcp_servers]\nother = { note = \"glimmer\" }\n"
+	if scanGlimUse(splitLines(ok)).any() {
+		t.Fatal("unrelated value mentioning glim as a substring was treated as a glim definition")
+	}
+	for _, bad := range []string{
+		"mcp_servers = { glim = { command = \"x\" } }\n",
+		"mcp_servers = { \"glim\" = { command = \"x\" } }\n",
+		"mcp_servers = { other = {}, glim.command = \"x\" }\n",
+	} {
+		if !scanGlimUse(splitLines(bad)).any() {
+			t.Fatalf("missed glim definition in %q", bad)
+		}
+	}
+}
+
+func TestCodexInstallReportsAdoption(t *testing.T) {
+	d, _ := testDeps(t)
+	cfg := d.Home + "/.codex/config.toml"
+	os.MkdirAll(d.Home+"/.codex", 0o755)
+	os.WriteFile(cfg, []byte(tomlOldBody+"\n"), 0o644)
+	steps, err := Install("codex", d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(steps, "\n"), "adopted the existing [mcp_servers.glim]") {
+		t.Fatalf("no adoption notice: %v", steps)
+	}
+	steps, err = Install("codex", d)
+	if err != nil || strings.Contains(strings.Join(steps, "\n"), "adopted") {
+		t.Fatalf("rerun must not report adoption: %v %v", steps, err)
+	}
+}

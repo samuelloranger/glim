@@ -94,10 +94,14 @@ func installCodex(d Deps) ([]string, error) {
 
 	cfg := filepath.Join(d.Home, ".codex", "config.toml")
 	toml := fmt.Sprintf("[mcp_servers.glim]\ncommand = %q\nargs = [\"mcp\"]", d.GlimPath)
-	if err := upsertBlock(cfg, blockBeginTOML, blockEndTOML, toml); err != nil {
+	adopted, err := upsertBlockReport(cfg, blockBeginTOML, blockEndTOML, toml)
+	if err != nil {
 		return nil, err
 	}
 	steps = append(steps, "registered glim MCP server in "+cfg)
+	if adopted {
+		steps = append(steps, "adopted the existing [mcp_servers.glim] table into glim's managed block; its extra keys and sub-tables are kept but `glim uninstall codex` will remove them with the block")
+	}
 
 	path := filepath.Join(d.Home, ".codex", "AGENTS.md")
 	if err := upsertBlock(path, blockBeginMD, blockEndMD, SteeringRule); err != nil {
@@ -618,14 +622,30 @@ func findBlock(content, begin, end string) (blockSpan, bool) {
 // end marker instead of being overwritten. Separators glim inserts use the
 // file's dominant line ending.
 func upsertBlock(path, begin, end, body string) error {
+	_, err := upsertBlockReport(path, begin, end, body)
+	return err
+}
+
+// utf8BOM may start a file written by a Windows editor. It is not whitespace
+// to TOML scanning, so it is set aside while editing and put back on write.
+const utf8BOM = "\ufeff"
+
+// upsertBlockReport is upsertBlock that also reports whether an existing
+// unmanaged glim table was adopted into the managed block.
+func upsertBlockReport(path, begin, end, body string) (adopted bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return false, err
 	}
 	existing, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
-		return err
+		return false, err
 	}
 	content := string(existing)
+	bom := ""
+	if strings.HasPrefix(content, utf8BOM) {
+		bom, content = utf8BOM, strings.TrimPrefix(content, utf8BOM)
+	}
+	write := func(s string) error { return os.WriteFile(path, []byte(bom+s), 0o644) }
 	eol := detectEOL(content)
 	conv := func(s string) string { return strings.ReplaceAll(s, "\n", eol) }
 	body = strings.ReplaceAll(body, "\r\n", "\n")
@@ -633,7 +653,7 @@ func upsertBlock(path, begin, end, body string) error {
 	if sp, ok := findBlock(content, begin, end); ok {
 		inner, foreign, err := splitBlock(path, begin, end, content[sp.innerStart:sp.innerEnd], body, false, eol)
 		if err != nil {
-			return err
+			return false, err
 		}
 		block := begin + eol + conv(inner) + eol + end
 		if foreign != "" {
@@ -642,19 +662,19 @@ func upsertBlock(path, begin, end, body string) error {
 		}
 		if begin == blockBeginTOML {
 			if err := checkNoUnmanagedGlim(path, content[:sp.start]+"\n"+content[sp.end:]); err != nil {
-				return err
+				return false, err
 			}
 		}
 		content = content[:sp.start] + block + content[sp.end:]
-		return os.WriteFile(path, []byte(content), 0o644)
+		return false, write(content)
 	}
 	if begin == blockBeginTOML {
-		adopted, changed, err := adoptUnmanagedGlim(path, content, begin, end, body, eol)
+		adoptedContent, changed, err := adoptUnmanagedGlim(path, content, begin, end, body, eol)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if changed {
-			return os.WriteFile(path, []byte(adopted), 0o644)
+			return true, write(adoptedContent)
 		}
 	}
 	if content != "" && !strings.HasSuffix(content, "\n") {
@@ -664,7 +684,7 @@ func upsertBlock(path, begin, end, body string) error {
 		content += eol
 	}
 	content += begin + eol + conv(body) + eol + end + eol
-	return os.WriteFile(path, []byte(content), 0o644)
+	return false, write(content)
 }
 
 // removeBlock deletes glim's own content and the markers from path, leaving
@@ -679,7 +699,8 @@ func removeBlock(path, begin, end string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	content := string(data)
+	content := strings.TrimPrefix(string(data), utf8BOM)
+	bom := string(data)[:len(data)-len(content)]
 	sp, ok := findBlock(content, begin, end)
 	if !ok {
 		return false, nil
@@ -700,6 +721,9 @@ func removeBlock(path, begin, end string) (bool, error) {
 	out := strings.Join(parts, eol+eol)
 	if rest == "" && out != "" {
 		out += eol
+	}
+	if out != "" {
+		out = bom + out
 	}
 	return true, os.WriteFile(path, []byte(out), 0o644)
 }

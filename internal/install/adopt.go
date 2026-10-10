@@ -2,6 +2,7 @@ package install
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -14,6 +15,12 @@ type glimTableUse struct {
 }
 
 func (u glimTableUse) any() bool { return len(u.headers) > 0 || u.array || u.dotted }
+
+// inlineGlimKey matches a bare or quoted `glim` key (followed by `=` or a
+// dotted-key `.`) inside an inline table value. It is deliberately loose: a
+// false positive only makes glim refuse, which is safe, while a plain
+// substring test also refused unrelated values such as "glimmer".
+var inlineGlimKey = regexp.MustCompile(`(^|[{,\s])(glim|"glim"|'glim')\s*[=.]`)
 
 // scanGlimUse looks for definitions of [mcp_servers.glim] (or its sub-tables)
 // in lines. It is a line scan, so a header-looking line inside a multi-line
@@ -51,7 +58,7 @@ func scanGlimUse(lines []string) glimTableUse {
 		full := append(append([]string{}, cur...), segs...)
 		if !isGlimSegs(cur) && isGlimSegs(full) {
 			u.dotted = true
-		} else if len(full) == 1 && full[0] == "mcp_servers" && strings.Contains(rest, "glim") {
+		} else if len(full) == 1 && full[0] == "mcp_servers" && inlineGlimKey.MatchString(rest) {
 			u.dotted = true // mcp_servers = { glim = { ... } }
 		}
 	}
@@ -203,7 +210,9 @@ func adoptUnmanagedGlim(path, content, begin, end, body, eol string) (string, bo
 		}
 	}
 	res := strings.Join(out, "\n")
-	if trailingNL {
+	if trailingNL || strings.HasSuffix(res, "\r") {
+		// A CRLF file without a final newline ends in the block's end marker
+		// carrying a CR; complete it rather than leave a lone CR.
 		res += "\n"
 	}
 	return res, true, nil
