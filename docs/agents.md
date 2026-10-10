@@ -92,7 +92,8 @@ Chrome:
 | Feature | Result |
 | --- | --- |
 | Inline `<script>`, inline `<style>`, `eval` | works |
-| Scripts, stylesheets, images, fonts and iframes from a CDN | work |
+| Scripts, stylesheets, images and iframes from a CDN | work |
+| Web fonts from a CDN | not verified |
 | `fetch` to another site | no-CORS requests go through; reading the response needs that site to send CORS headers (cdnjs does) |
 | `fetch`/XHR of the preview's own files | fails (no CORS headers for an opaque origin): inline the data instead |
 | Relative `<img>`, `<script>`, `<link>` | work |
