@@ -129,9 +129,11 @@ func Uninstall(target string, d Deps) ([]string, error) {
 			return steps, err
 		}
 		rule := filepath.Join(d.Home, ".cursor", "rules", "glim.mdc")
-		owned := []string{cursorRuleBody(SteeringRule)}
-		for _, l := range legacySteeringRules {
-			owned = append(owned, cursorRuleBody(l))
+		var owned []string
+		for _, desc := range append([]string{cursorRuleDescription}, legacyCursorRuleDescriptions...) {
+			for _, r := range append([]string{SteeringRule}, legacySteeringRules...) {
+				owned = append(owned, cursorRuleBody(desc, r))
+			}
 		}
 		ok, foreignRule, err := removeOwnedFile(rule, owned)
 		if foreignRule {

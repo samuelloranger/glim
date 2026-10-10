@@ -121,3 +121,21 @@ func TestUninstallCursorRemovesGlimOwnRule(t *testing.T) {
 		t.Fatal("rule not removed")
 	}
 }
+
+func TestUninstallCursorRemovesLegacyRule(t *testing.T) {
+	d, _ := testDeps(t)
+	rule := filepath.Join(d.Home, ".cursor", "rules", "glim.mdc")
+	if err := os.MkdirAll(filepath.Dir(rule), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := cursorRuleBody(legacyCursorRuleDescriptions[0], legacySteeringRules[0])
+	if err := os.WriteFile(rule, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Uninstall("cursor", d); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(rule); !os.IsNotExist(err) {
+		t.Fatal("legacy rule not removed")
+	}
+}
