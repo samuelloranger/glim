@@ -26,10 +26,16 @@ type Config struct {
 	// LiveReload makes open preview tabs refresh when the preview is
 	// republished under the same name. Nil means the default (on).
 	LiveReload *bool `json:"live_reload,omitempty"`
+	// SelfFetch lets a preview page fetch its own files by answering
+	// Origin: null with CORS headers. Nil means the default (on).
+	SelfFetch *bool `json:"self_fetch,omitempty"`
 }
 
 // LiveReloadEnabled reports whether live reload is on (the default).
 func (c Config) LiveReloadEnabled() bool { return c.LiveReload == nil || *c.LiveReload }
+
+// SelfFetchEnabled reports whether previews may fetch their own files (the default).
+func (c Config) SelfFetchEnabled() bool { return c.SelfFetch == nil || *c.SelfFetch }
 
 func Path() string {
 	home, _ := os.UserHomeDir()
@@ -69,6 +75,9 @@ func Load() Config {
 			if f.LiveReload != nil {
 				c.LiveReload = f.LiveReload
 			}
+			if f.SelfFetch != nil {
+				c.SelfFetch = f.SelfFetch
+			}
 		}
 	}
 	if v := firstEnv("GLIM_DOMAIN", "GLIM_BASE_URL"); v != "" {
@@ -91,6 +100,11 @@ func Load() Config {
 	if v := os.Getenv("GLIM_LIVE_RELOAD"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			c.LiveReload = &b
+		}
+	}
+	if v := os.Getenv("GLIM_SELF_FETCH"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.SelfFetch = &b
 		}
 	}
 	return c

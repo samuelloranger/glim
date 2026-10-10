@@ -544,7 +544,7 @@ func cmdMCP() error {
 		// else starts, so bring it up on demand like `glim --local` does.
 		ensureBase = func() (string, error) { return ensureLocalServer(cfg) }
 	}
-	return mcpserver.Run(context.Background(), s, cfg.TTLDuration(), version, viewStatsNow, ensureBase)
+	return mcpserver.Run(context.Background(), s, cfg.TTLDuration(), version, viewStatsNow, ensureBase, cfg.SelfFetchEnabled())
 }
 
 func cmdServe(args []string) error {
@@ -600,8 +600,9 @@ func cmdServe(args []string) error {
 		DefaultTTL:    cfg.TTLDuration(),
 	})
 	return serve.Serve(ctx, serve.Options{Bind: *bind, Port: *port, Store: st, API: apiSrv, Web: web.Handler(),
-		LiveReload: cfg.LiveReloadEnabled(),
-		Views:      &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken},
+		LiveReload:  cfg.LiveReloadEnabled(),
+		NoSelfFetch: !cfg.SelfFetchEnabled(),
+		Views:       &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken},
 		Unlock: &serve.Unlock{Token: db.UnlockToken, Limiter: auth.NewLimiter(nil),
 			Secure: strings.HasPrefix(base, "https://")}})
 }
@@ -625,6 +626,7 @@ func cmdConfig(args []string) error {
 	root := fs.String("root", "", "directory previews are stored/served from")
 	ttl := fs.String("ttl", "", "default time to live, e.g. 6h")
 	liveReload := fs.String("live-reload", "", "refresh open tabs when a preview is republished (true or false)")
+	selfFetch := fs.String("self-fetch", "", "let preview pages fetch their own files (true or false)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -639,6 +641,7 @@ func cmdConfig(args []string) error {
 		fmt.Printf("root:   %s\n", cfg.Root)
 		fmt.Printf("ttl:    %s\n", cfg.TTL)
 		fmt.Printf("live_reload: %t\n", cfg.LiveReloadEnabled())
+		fmt.Printf("self_fetch:  %t\n", cfg.SelfFetchEnabled())
 		return nil
 	}
 	if *domain != "" {
@@ -662,6 +665,13 @@ func cmdConfig(args []string) error {
 			return fmt.Errorf("--live-reload: want true or false, got %q", *liveReload)
 		}
 		cfg.LiveReload = &b
+	}
+	if *selfFetch != "" {
+		b, err := strconv.ParseBool(*selfFetch)
+		if err != nil {
+			return fmt.Errorf("--self-fetch: want true or false, got %q", *selfFetch)
+		}
+		cfg.SelfFetch = &b
 	}
 	if err := cfg.Save(); err != nil {
 		return err
@@ -979,7 +989,7 @@ usage:
   glim user ls | passwd <email> | rm <email>  manage dashboard accounts
   glim version
 
-config: ~/.glim/config.json (env: GLIM_DOMAIN, GLIM_PORT, GLIM_ROOT, GLIM_TTL, GLIM_LIVE_RELOAD, GLIM_SESSION_ID)
+config: ~/.glim/config.json (env: GLIM_DOMAIN, GLIM_PORT, GLIM_ROOT, GLIM_TTL, GLIM_LIVE_RELOAD, GLIM_SELF_FETCH, GLIM_SESSION_ID)
 `)
 }
 

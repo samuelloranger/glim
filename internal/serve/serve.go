@@ -36,10 +36,10 @@ func PreviewHandlerWith(st *store.Store, views *Views) http.Handler {
 // visitor holding its unlock cookie. A nil unlock leaves locked previews
 // permanently locked (fail closed).
 func PreviewHandlerFull(st *store.Store, views *Views, unlock *Unlock) http.Handler {
-	return previewHandler(st, views, unlock, false)
+	return previewHandler(st, views, unlock, false, true)
 }
 
-func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) http.Handler {
+func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFetch bool) http.Handler {
 	fsys := noListFS{http.Dir(st.Root)}
 	files := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +78,7 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live bool) ht
 				return
 			}
 		}
-		if !m.Locked() {
+		if selfFetch && !m.Locked() {
 			// Locked previews never get CORS headers: the unlock cookie is not
 			// sent from an opaque origin, and allowing credentials would let
 			// any sandboxed page elsewhere read locked content.
@@ -191,11 +191,14 @@ type Options struct {
 	// LiveReload serves /_glim/live/<slug> and injects the reload script into
 	// served HTML pages.
 	LiveReload bool
-	Live       *Live // optional: overrides the default stream settings (tests)
+	// NoSelfFetch turns off the CORS answers that let a preview page fetch its
+	// own files (on by default).
+	NoSelfFetch bool
+	Live        *Live // optional: overrides the default stream settings (tests)
 }
 
 func NewRouter(o Options) http.Handler {
-	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload)
+	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload, !o.NoSelfFetch)
 	live := o.Live
 	if o.LiveReload && live == nil {
 		live = NewLive(o.Store)

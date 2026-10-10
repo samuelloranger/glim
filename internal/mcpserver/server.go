@@ -294,12 +294,22 @@ func extendPreview(s *store.Store, in ExtendInput) (ExtendOutput, error) {
 // `omitempty`, so a false value for those is dropped from the wire regardless.
 func boolPtr(b bool) *bool { return &b }
 
+// selfFetchClause is the part of present's sandbox sentence about a page
+// fetching its own files, which depends on the server's self-fetch setting.
+func selfFetchClause(selfFetch bool) string {
+	if selfFetch {
+		return "fetch/XHR of the page's own files works (not for password-protected previews: inline the data there)"
+	}
+	return "fetch/XHR of the page's own files fails (inline the data)"
+}
+
 // Run serves the MCP tools over stdio. views (may be nil) returns the current
 // per-preview view stats for the list tool. ensureBase (may be nil) is called
 // before each present to make sure the links it returns load, returning the
 // base URL to use; when it fails the preview is still published, with a
-// warning in the result.
-func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string, views func() map[string]auth.ViewStat, ensureBase func() (string, error)) error {
+// warning in the result. selfFetch says whether the server lets preview pages
+// fetch their own files, which present's description reports.
+func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string, views func() map[string]auth.ViewStat, ensureBase func() (string, error), selfFetch bool) error {
 	server := mcp.NewServer(&mcp.Implementation{Name: "glim", Version: version}, nil)
 
 	// mu guards s.BaseURL, which a present may update while list reads it.
@@ -321,7 +331,7 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "present",
-		Description: "Publish a self-contained HTML file or directory, or a Markdown, text, JSON or image file (converted to a styled page), and return a short-lived link to show the user, optionally behind a password. Pass `name` to update an existing preview in place (omit `password` to keep its current one); open tabs usually refresh by themselves. Pass exactly one of `path` (an existing file or directory) or `content` (the page text itself, no file needed; `format` html by default, or md, txt, json). Pages run in a sandbox: localStorage, sessionStorage, cookies, IndexedDB and service workers throw (use try/catch), fetch/XHR of the page's own files works (not for password-protected previews: inline the data there), and CDN scripts, styles and images work. Use this to show any visual/HTML preview instead of other preview mechanisms.",
+		Description: "Publish a self-contained HTML file or directory, or a Markdown, text, JSON or image file (converted to a styled page), and return a short-lived link to show the user, optionally behind a password. Pass `name` to update an existing preview in place (omit `password` to keep its current one); open tabs usually refresh by themselves. Pass exactly one of `path` (an existing file or directory) or `content` (the page text itself, no file needed; `format` html by default, or md, txt, json). Pages run in a sandbox: localStorage, sessionStorage, cookies, IndexedDB and service workers throw (use try/catch), " + selfFetchClause(selfFetch) + ", and CDN scripts, styles and images work. Use this to show any visual/HTML preview instead of other preview mechanisms.",
 		// Creates a new preview each call: writes state, additive (not
 		// destructive), non-idempotent, closed domain (own local store/server).
 		Annotations: &mcp.ToolAnnotations{
