@@ -1,6 +1,8 @@
 // The owner-only glim bar. Wrapped by ownerbar.go as function(D){...}(data);
 // D is {title, url, dash, exp, locked}. It renders a fixed, closed shadow DOM
-// overlay, never touches page layout, and swallows every error.
+// overlay, never touches page layout, and swallows every error. On narrow
+// screens the bar docks to the bottom edge and pads itself by the safe-area
+// insets; on wider ones it floats as a rounded bar.
 try {
   var doc = document, root = doc.documentElement;
   if (!root || window.__glimBar) return;
@@ -19,6 +21,13 @@ try {
   };
   for (var k in force) host.style.setProperty(k, force[k], "important");
   var sh = host.attachShadow({ mode: "closed" });
+  // iOS reports safe-area insets only to pages whose viewport tag opts in with
+  // viewport-fit=cover, so add it to an existing tag; without it the docked
+  // bar would sit under the home indicator.
+  var vp = doc.querySelector('meta[name="viewport"]');
+  if (vp && !/viewport-fit/i.test(vp.content)) {
+    vp.content = vp.content ? vp.content + ", viewport-fit=cover" : "viewport-fit=cover";
+  }
   var css =
     ":host{all:initial}" +
     "*{box-sizing:border-box}" +
@@ -45,7 +54,17 @@ try {
     "max-width:640px;margin:0 auto;padding:6px;border-radius:10px;background:var(--bg);border:1px solid var(--bd);" +
     "box-shadow:0 2px 12px rgba(0,0,0,.22)}" +
     ".man input{all:unset;box-sizing:border-box;display:block;width:100%;padding:6px 8px;color:var(--fg);font:12px monospace;" +
-    "user-select:text;-webkit-user-select:text}";
+    "user-select:text;-webkit-user-select:text}" +
+    // Narrow screens: a flat strip flush with the bottom edge, padded by the
+    // safe-area insets so it fills the home-indicator area instead of
+    // floating over it.
+    "@media(max-width:640px){" +
+    ".w{padding:0}" +
+    ".w.c{padding:0 calc(8px + env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) 0}" +
+    ".bar{max-width:none;height:calc(40px + env(safe-area-inset-bottom,0px));border-radius:0;border-width:1px 0 0;" +
+    "box-shadow:0 -1px 8px rgba(0,0,0,.14);" +
+    "padding:0 max(2px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(12px,env(safe-area-inset-left,0px))}" +
+    ".man{left:0;right:0;border-radius:0;border-width:1px 0 0}}";
   var st = doc.createElement("style");
   st.textContent = css;
   sh.appendChild(st);

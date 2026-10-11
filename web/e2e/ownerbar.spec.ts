@@ -93,6 +93,27 @@ test("a page that uses the glim-bar name itself still gets the bar", async () =>
   await expect(host.getByText("Name clash demo", { exact: true })).toBeVisible();
 });
 
+test("on a phone-width screen the bar docks flush to the bottom edge", async () => {
+  const slug = publish("Dock demo", {
+    body: "<meta name=viewport content='width=device-width'><h1>dock</h1>",
+  });
+  await ownerPage.setViewportSize({ width: 390, height: 700 });
+  try {
+    await ownerPage.goto(`/${slug}/`);
+    const host = ownerPage.locator("[data-glim-bar]");
+    const bar = host.getByText("Dock demo", { exact: true }).locator("..");
+    const box = await bar.boundingBox();
+    expect(box?.x).toBe(0);
+    expect(box?.width).toBe(390);
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBe(700);
+    expect(box?.height).toBeLessThanOrEqual(44);
+    const vp = await ownerPage.locator('meta[name="viewport"]').getAttribute("content");
+    expect(vp).toContain("viewport-fit=cover");
+  } finally {
+    await ownerPage.setViewportSize({ width: 1000, height: 700 });
+  }
+});
+
 test("copy link gives feedback or falls back to a selected link", async () => {
   const slug = publish("Copy demo", { body: "<h1>copy</h1>" });
   await ownerPage.goto(`/${slug}/`);
