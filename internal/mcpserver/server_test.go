@@ -202,3 +202,32 @@ func TestExtendRejectsNonPositiveTTL(t *testing.T) {
 		t.Errorf("valid extend failed: %v", err)
 	}
 }
+
+func TestPresentHeaderFalseHidesBarAndIsNotSticky(t *testing.T) {
+	s := newTestStore(t)
+	p := filepath.Join(t.TempDir(), "page.html")
+	if err := os.WriteFile(p, []byte("<h1>hi</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	res, err := publishPreview(s, time.Hour, PresentInput{Path: p, Header: &off})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.Get(res.Name); !m.NoHeader {
+		t.Fatal("header:false should set no_header")
+	}
+	if _, err := publishPreview(s, time.Hour, PresentInput{Path: p, Name: res.Name}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.Get(res.Name); m.NoHeader {
+		t.Fatal("republish without header must reset no_header")
+	}
+	on := true
+	if res, err = publishPreview(s, time.Hour, PresentInput{Path: p, Header: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.Get(res.Name); m.NoHeader {
+		t.Fatal("header:true must keep the header")
+	}
+}

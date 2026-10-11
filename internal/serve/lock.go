@@ -70,16 +70,14 @@ func isDocumentPath(p string) bool {
 // guardLocked enforces a preview's password. It returns true when the request
 // may proceed to the preview's files; otherwise it has written the response.
 func guardLocked(w http.ResponseWriter, r *http.Request, slug string, m store.Manifest, views *Views, u *Unlock, base string) bool {
-	if views != nil && views.IsOwner != nil {
-		if c, err := r.Cookie(auth.OwnerCookie); err == nil && views.IsOwner(c.Value) {
-			// The owner cookie is SameSite=Lax, which a sandboxed preview's
-			// sub-resource requests do not carry, so hand the owner the
-			// slug's unlock cookie too on the document they open.
-			if r.Method == http.MethodGet && isDocumentPath(r.URL.Path) {
-				setUnlockCookie(w, slug, m, u)
-			}
-			return true
+	if views.owner(r) {
+		// The owner cookie is SameSite=Lax, which a sandboxed preview's
+		// sub-resource requests do not carry, so hand the owner the
+		// slug's unlock cookie too on the document they open.
+		if r.Method == http.MethodGet && isDocumentPath(r.URL.Path) {
+			setUnlockCookie(w, slug, m, u)
 		}
+		return true
 	}
 	if u.valid(r, slug, m.PasswordHash) {
 		return true

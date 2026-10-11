@@ -34,3 +34,25 @@ func TestTTLDurationAcceptsDays(t *testing.T) {
 		t.Fatalf("TTLDuration(2d) = %s", got)
 	}
 }
+
+func TestHeaderDefaultsOnAndIsConfigurable(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GLIM_HEADER", "")
+	if !Load().HeaderEnabled() {
+		t.Fatal("header should default to on")
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".glim"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(), []byte(`{"header": false}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if Load().HeaderEnabled() {
+		t.Fatal("header=false in the file should disable it")
+	}
+	t.Setenv("GLIM_HEADER", "true")
+	if !Load().HeaderEnabled() {
+		t.Fatal("env should override the file")
+	}
+}

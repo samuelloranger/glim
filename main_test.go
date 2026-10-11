@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/samuelloranger/glim/internal/store"
 )
 
 func TestHumanBytes(t *testing.T) {
@@ -206,5 +208,30 @@ func TestPublishFormatOnlyWithStdin(t *testing.T) {
 	}
 	if err := cmdPublish([]string{"-", "--password"}); err == nil || !strings.Contains(err.Error(), "--password") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestPublishNoHeaderFlagIsNotSticky(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "pub")
+	t.Setenv("HOME", home)
+	t.Setenv("GLIM_ROOT", root)
+	t.Setenv("GLIM_DOMAIN", "https://glim.example.com")
+	page := filepath.Join(home, "page.html")
+	if err := os.WriteFile(page, []byte("<h1>x</h1>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := store.New(root, "https://glim.example.com")
+	if err := cmdPublish([]string{page, "--name", "demo-1234", "--no-header"}); err != nil {
+		t.Fatal(err)
+	}
+	if m, err := st.Get("demo-1234"); err != nil || !m.NoHeader {
+		t.Fatalf("--no-header not stored: %+v %v", m, err)
+	}
+	if err := cmdPublish([]string{page, "--name", "demo-1234"}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := st.Get("demo-1234"); m.NoHeader {
+		t.Fatal("republish without --no-header must clear it")
 	}
 }

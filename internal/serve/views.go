@@ -52,10 +52,17 @@ func (v *Views) track(r *http.Request, name string) {
 	if v == nil || v.Record == nil || !CountsAsView(r) {
 		return
 	}
-	if v.IsOwner != nil {
-		if c, err := r.Cookie(auth.OwnerCookie); err == nil && v.IsOwner(c.Value) {
-			return
-		}
+	if v.owner(r) {
+		return
 	}
 	v.Record(name)
+}
+
+// owner reports whether r carries a valid owner cookie.
+func (v *Views) owner(r *http.Request) bool {
+	if v == nil || v.IsOwner == nil {
+		return false
+	}
+	c, err := r.Cookie(auth.OwnerCookie)
+	return err == nil && v.IsOwner(c.Value)
 }

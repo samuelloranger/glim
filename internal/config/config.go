@@ -29,6 +29,9 @@ type Config struct {
 	// SelfFetch lets a preview page fetch its own files by answering
 	// Origin: null with CORS headers. Nil means the default (on).
 	SelfFetch *bool `json:"self_fetch,omitempty"`
+	// Header shows the owner-only glim bar on preview pages opened by the
+	// signed-in dashboard owner. Nil means the default (on).
+	Header *bool `json:"header,omitempty"`
 }
 
 // LiveReloadEnabled reports whether live reload is on (the default).
@@ -36,6 +39,9 @@ func (c Config) LiveReloadEnabled() bool { return c.LiveReload == nil || *c.Live
 
 // SelfFetchEnabled reports whether previews may fetch their own files (the default).
 func (c Config) SelfFetchEnabled() bool { return c.SelfFetch == nil || *c.SelfFetch }
+
+// HeaderEnabled reports whether the owner-only preview bar is on (the default).
+func (c Config) HeaderEnabled() bool { return c.Header == nil || *c.Header }
 
 func Path() string {
 	home, _ := os.UserHomeDir()
@@ -78,6 +84,9 @@ func Load() Config {
 			if f.SelfFetch != nil {
 				c.SelfFetch = f.SelfFetch
 			}
+			if f.Header != nil {
+				c.Header = f.Header
+			}
 		}
 	}
 	if v := firstEnv("GLIM_DOMAIN", "GLIM_BASE_URL"); v != "" {
@@ -105,6 +114,11 @@ func Load() Config {
 	if v := os.Getenv("GLIM_SELF_FETCH"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			c.SelfFetch = &b
+		}
+	}
+	if v := os.Getenv("GLIM_HEADER"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			c.Header = &b
 		}
 	}
 	return c

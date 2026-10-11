@@ -9,6 +9,38 @@ about two seconds without a reload.
 Password-protected previews carry a `locked` badge next to their title (the API's
 `locked` field). Their thumbnail shows the unlock form.
 
+## The glim bar
+
+When you open a preview while signed in to the dashboard, glim adds a small
+floating bar at the bottom of the page. Visitors, scrapers and `curl` never get
+it: it is only added when the request carries your valid `glim_owner` cookie
+(see [Seen indicator](#seen-indicator)), and everyone else receives the page
+exactly as published.
+
+The bar shows the preview's title (or its slug), the time it has left (or
+`Pinned`), a lock icon when it is password-protected, a **Copy link** button and
+a link back to the dashboard. It starts expanded on every load; the arrow
+collapses it to a small pill in the bottom-right corner and tapping the pill
+expands it again. Nothing is remembered between loads. It floats over the page
+without shifting its layout, lives in a closed shadow DOM so the page's CSS
+cannot restyle it, and follows the light or dark colour scheme.
+
+Copy link uses the clipboard API and falls back to the older copy command; if
+the browser refuses both inside the preview sandbox, the bar shows the link
+selected so you can copy it by hand.
+
+The bar is a serve-time injection, like live reload, so it is not added to:
+
+- HTML larger than 5 MB, non-HTML files, and the password unlock page;
+- pages loaded in an iframe (anything but a top-level navigation).
+
+Pages are served with `Vary: Cookie`, and your copy with `Cache-Control: private,
+no-store`, so no shared cache ever hands your bar to someone else.
+
+Turn it off for one preview with `--no-header` on publish (or the MCP
+`present` tool's `header: false`), which is not remembered on republish, or for
+the whole server with `glim config --header=false` (config key `header`).
+
 ## Seen indicator
 
 Each card shows whether the link has been opened: `seen 3× · 5m ago`, or `not
