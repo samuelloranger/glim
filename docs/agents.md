@@ -148,8 +148,9 @@ most 200). Images are never returned, only their file name and size
 (`binary: true`). An unknown or expired slug gives the same "no such preview"
 error as the other tools.
 
-`present` also states the slug and expiry in its text (`name: <slug> · expires:
-<RFC3339>`, or `pinned`) for clients that read only text, and `list` includes
+`present` also states the slug and expiry in its text
+(`name: <slug> · expires: <RFC3339>`, or `pinned`) for clients that read only
+text, and `list` includes
 each preview's expiry.
 
 ## Comments

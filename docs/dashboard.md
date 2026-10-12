@@ -162,7 +162,7 @@ On iPhone (iOS 16.4 or later):
 
 On desktop browsers the same switch is available without installing.
 
-Each notification reads "<title> published" (or "updated" for a republish) and
+Each notification reads "`<title> published`" (or "updated" for a republish) and
 opens the preview when tapped. There is at most one notification per preview
 every 30 seconds, and previews that already existed when `glim serve` started
 do not notify. Notifications go to every browser that has them switched on.
