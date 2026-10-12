@@ -72,6 +72,9 @@ export function createApi(fetchFn: typeof fetch = fetch) {
       request<Preview>("POST", `/previews/${enc(name)}/extend`, { ttl }),
     pin: (name: string) => request<Preview>("POST", `/previews/${enc(name)}/pin`),
     unpin: (name: string) => request<Preview>("POST", `/previews/${enc(name)}/unpin`),
+    lock: (name: string, password: string) =>
+      request<Preview>("POST", `/previews/${enc(name)}/lock`, { password }),
+    unlock: (name: string) => request<Preview>("POST", `/previews/${enc(name)}/unlock`),
     remove: (name: string) => request<void>("DELETE", `/previews/${enc(name)}`),
     users: () => request<{ users: User[] }>("GET", "/users"),
     addUser: (email: string, password: string) =>

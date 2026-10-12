@@ -41,3 +41,43 @@ func TestPresentPasswordParam(t *testing.T) {
 		}
 	}
 }
+
+func TestLockToolLocksAndUnlocks(t *testing.T) {
+	s := newTestStore(t)
+	name := publish(t, s, "Secret", "", time.Hour)
+	out, err := lockPreview(s, LockInput{Name: name, Password: "open sesame"})
+	if err != nil || !out.Locked || out.Name != name {
+		t.Fatalf("lock = %+v, %v", out, err)
+	}
+	m, _ := s.Get(name)
+	if !auth.CheckPassword(m.PasswordHash, "open sesame") {
+		t.Fatal("stored hash does not match the password")
+	}
+	no := false
+	out, err = lockPreview(s, LockInput{Name: name, Locked: &no})
+	if err != nil || out.Locked {
+		t.Fatalf("unlock = %+v, %v", out, err)
+	}
+	if m, _ := s.Get(name); m.Locked() {
+		t.Fatal("still locked after unlock")
+	}
+}
+
+func TestLockToolRejectsBadInput(t *testing.T) {
+	s := newTestStore(t)
+	name := publish(t, s, "Secret", "", time.Hour)
+	no := false
+	for _, in := range []LockInput{
+		{Name: name},
+		{Name: name, Password: "short"},
+		{Name: name, Password: "open sesame", Locked: &no},
+		{Name: "gone-0000", Password: "open sesame"},
+	} {
+		if _, err := lockPreview(s, in); err == nil {
+			t.Errorf("lock %+v should fail", in)
+		}
+	}
+	if m, _ := s.Get(name); m.Locked() {
+		t.Fatal("a rejected lock still locked the preview")
+	}
+}

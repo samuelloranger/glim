@@ -48,8 +48,8 @@ glim report.html --title "Quick look" --local
 ## Dashboard
 
 `glim serve` also serves a private dashboard at `/`. It shows live thumbnails of
-every preview, a countdown and a seen count for each one, and lets you extend, pin or remove
-them. It updates in real time. The first visit creates the account with an
+every preview, a countdown and a seen count for each one, and lets you extend, pin, lock or
+remove them. It updates in real time. The first visit creates the account with an
 email and password, so do that before exposing the server. See
 [docs/dashboard.md](docs/dashboard.md).
 Over HTTPS it also installs as an app (iPhone Home Screen included) and can send a
@@ -83,7 +83,7 @@ elapses; expired previews are pruned on the next command and by `glim gc`.
 ## Agent integration (MCP)
 
 `glim install <agent>` registers glim's MCP server (tools: `present`, `list`,
-`get`, `revoke`, `pin`, `extend`) and writes a steering rule so the agent prefers glim
+`get`, `revoke`, `pin`, `extend`, `lock`) and writes a steering rule so the agent prefers glim
 for previews. Supported: Claude, Codex, Cursor. `glim install --skill <agent>`
 writes a `SKILL.md` instead (no MCP server), and `glim uninstall <agent>` removes
 either setup.

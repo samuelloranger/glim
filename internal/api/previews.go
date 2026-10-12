@@ -88,6 +88,44 @@ func (s *Server) postUnpin(w http.ResponseWriter, r *http.Request, _ auth.Sessio
 	s.respondPreview(w, name)
 }
 
+// postLock sets (or replaces) the preview's password. Changing it signs out
+// every visitor who unlocked the old one, since unlock cookies are bound to
+// the hash.
+func (s *Server) postLock(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	name, ok := s.livePreview(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	hash, err := auth.HashPassword(body.Password)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := s.d.Store.SetPasswordHash(name, hash); err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.respondPreview(w, name)
+}
+
+func (s *Server) postUnlock(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	name, ok := s.livePreview(w, r)
+	if !ok {
+		return
+	}
+	if err := s.d.Store.SetPasswordHash(name, ""); err != nil {
+		s.internal(w, err)
+		return
+	}
+	s.respondPreview(w, name)
+}
+
 func (s *Server) deletePreview(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	name, ok := s.livePreview(w, r)
 	if !ok {

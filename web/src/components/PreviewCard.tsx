@@ -20,6 +20,8 @@ export function PreviewCard(props: {
   onUnpin: () => void;
   onRemove: () => void;
   onCopy: () => void;
+  onLock: () => void;
+  onUnlock: () => void;
 }) {
   // Decided once at mount: only previews that appear after the first load open.
   const arriving = untrack(() => props.arriving);
@@ -108,6 +110,18 @@ export function PreviewCard(props: {
         >
           <button class="btn quiet" type="button" onClick={() => props.onUnpin()}>
             Unpin
+          </button>
+        </Show>
+        <Show
+          when={props.preview.locked}
+          fallback={
+            <button class="btn quiet" type="button" onClick={() => props.onLock()}>
+              Lock
+            </button>
+          }
+        >
+          <button class="btn quiet" type="button" onClick={() => props.onUnlock()}>
+            Unlock
           </button>
         </Show>
         <button class="btn quiet danger" type="button" onClick={() => props.onRemove()}>

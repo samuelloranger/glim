@@ -2,12 +2,14 @@
 
 `glim serve` includes a private dashboard at the site root. Use it to see every
 live preview, with a live thumbnail and the time it has left. You can extend,
-pin or remove a preview, and copy its link. Changes made elsewhere, such as a
+pin, lock or remove a preview, and copy its link. Changes made elsewhere, such as a
 new publish from the CLI or an agent, or a preview expiring, show up within
 about two seconds without a reload.
 
 Password-protected previews carry a `locked` badge next to their title (the API's
-`locked` field). Their thumbnail shows the unlock form.
+`locked` field). Their thumbnail shows the unlock form. **Lock** asks for a
+password (twice) and protects the preview at once; **Unlock** removes the
+password. Either change signs out every visitor who unlocked it before.
 
 ## The glim bar
 

@@ -155,7 +155,8 @@ printf '%s\n' "$PREVIEW_PASSWORD" | glim report.html --password
 Only a bcrypt hash is stored (in the preview's manifest). Republishing a locked
 preview with `--name` keeps its password unless you pass `--password` again.
 `glim unlock` removes it, and changing or removing the password signs every
-visitor out. The dashboard shows a `locked` badge on locked previews, and you
+visitor out. The dashboard shows a `locked` badge on locked previews and has
+**Lock** and **Unlock** buttons that do the same as these commands, and you
 (signed in to the dashboard in the same browser) are never asked. See
 [Serving](./serving.md#password-protected-previews) for how it works.
 

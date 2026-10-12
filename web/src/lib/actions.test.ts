@@ -34,6 +34,8 @@ function harness() {
     extend: deferred<Preview>(),
     unpin: deferred<Preview>(),
     remove: deferred<void>(),
+    lock: deferred<Preview>(),
+    unlock: deferred<Preview>(),
   };
   const actions = createActions({
     api: {
@@ -41,6 +43,8 @@ function harness() {
       extend: () => pending.extend.promise,
       unpin: () => pending.unpin.promise,
       remove: () => pending.remove.promise,
+      lock: () => pending.lock.promise,
+      unlock: () => pending.unlock.promise,
     },
     live: { patch: (p) => calls.patch.push(p), drop: (n) => calls.drop.push(n) },
     toast: (text, tone = "info") => calls.toasts.push([text, tone]),
@@ -141,6 +145,39 @@ test("failed unpin shows the server message", async () => {
     await done;
     expect(calls.patch.length).toBe(0);
     expect(calls.toasts).toEqual([["That preview no longer exists.", "error"]]);
+    dispose();
+  });
+});
+
+test("lock patches the locked preview, and a rejected password reaches the caller", async () => {
+  await createRoot(async (dispose) => {
+    const { actions, calls, pending } = harness();
+    const done = actions.lock(base.name, "open sesame");
+    pending.lock.resolve({ ...base, locked: true });
+    await done;
+    expect(calls.patch[0]?.locked).toBe(true);
+    expect(calls.toasts).toEqual([["Locked. Visitors need the password.", "info"]]);
+
+    const second = harness();
+    const failed = second.actions.lock(base.name, "short");
+    second.pending.lock.reject(
+      new ApiError(400, "invalid", "Passwords need at least 8 characters."),
+    );
+    await expect(failed).rejects.toThrow("Passwords need at least 8 characters.");
+    expect(second.calls.patch.length).toBe(0);
+    expect(second.calls.toasts.length).toBe(0);
+    dispose();
+  });
+});
+
+test("unlock patches the server's preview and confirms", async () => {
+  await createRoot(async (dispose) => {
+    const { actions, calls, pending } = harness();
+    const done = actions.unlock(base.name);
+    pending.unlock.resolve({ ...base, locked: false });
+    await done;
+    expect(calls.patch[0]?.locked).toBe(false);
+    expect(calls.toasts).toEqual([["Unlocked. Anyone with the link can open it.", "info"]]);
     dispose();
   });
 });

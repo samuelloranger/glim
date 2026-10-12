@@ -17,6 +17,7 @@ import type { Preview, User } from "../lib/types";
 import { AccountPanel } from "./AccountPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Filters } from "./Filters";
+import { LockDialog } from "./LockDialog";
 import { PreviewCard } from "./PreviewCard";
 import { StatusBar } from "./StatusBar";
 import { ToastList } from "./Toasts";
@@ -32,6 +33,7 @@ export function Dashboard(props: {
   const actions = createActions({ api, live, toast: toasts.show, now: clock.now });
   const [filters, setFilters] = createSignal<FilterValue>(filtersFromSearch(location.search));
   const [confirming, setConfirming] = createSignal<Preview | null>(null);
+  const [locking, setLocking] = createSignal<Preview | null>(null);
   const [ready, setReady] = createSignal(false);
   const [accountOpen, setAccountOpen] = createSignal(false);
 
@@ -168,6 +170,8 @@ export function Dashboard(props: {
                     onUnpin={() => void actions.unpin(p.name)}
                     onRemove={() => setConfirming(p)}
                     onCopy={() => void copy(p)}
+                    onLock={() => setLocking(p)}
+                    onUnlock={() => void actions.unlock(p.name)}
                   />
                 )}
               </For>
@@ -186,6 +190,17 @@ export function Dashboard(props: {
         confirmLabel="Remove"
         onConfirm={confirmRemove}
         onCancel={() => setConfirming(null)}
+      />
+      <LockDialog
+        open={locking() !== null}
+        title={locking() ? displayTitle(locking() as Preview) : ""}
+        onLock={async (password) => {
+          const p = locking();
+          if (!p) return;
+          await actions.lock(p.name, password);
+          setLocking(null);
+        }}
+        onCancel={() => setLocking(null)}
       />
       <AccountPanel
         open={accountOpen()}

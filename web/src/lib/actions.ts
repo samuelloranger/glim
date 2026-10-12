@@ -11,7 +11,7 @@ export const CLOSE_MS = 220;
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type ActionDeps = {
-  api: Pick<Api, "extend" | "pin" | "unpin" | "remove">;
+  api: Pick<Api, "extend" | "pin" | "unpin" | "remove" | "lock" | "unlock">;
   live: Pick<Live, "patch" | "drop">;
   toast: (text: string, tone?: "info" | "error") => void;
   now: () => number;
@@ -51,6 +51,13 @@ export function createActions(deps: ActionDeps) {
     deps.live.patch(p);
   });
 
+  // No optimistic override for the lock state either: a rejected password must
+  // not flash the card as locked.
+  const unlockAction = action(function* (name: string) {
+    const p = (yield deps.api.unlock(name)) as Preview;
+    deps.live.patch(p);
+  });
+
   const removeAction = action(function* (name: string) {
     setOverrides((d) => {
       d[name] = { ...d[name], removed: true };
@@ -79,6 +86,13 @@ export function createActions(deps: ActionDeps) {
     pin: (name: string) => run(pinAction(name), "Pinned"),
     unpin: (name: string) => run(unpinAction(name), "Unpinned"),
     remove: (name: string) => run(removeAction(name), `Removed ${name}`),
+    /** Rejects with the server's error so the lock dialog can show it. */
+    lock: async (name: string, password: string) => {
+      deps.live.patch(await deps.api.lock(name, password));
+      deps.toast("Locked. Visitors need the password.");
+    },
+    unlock: (name: string) =>
+      run(unlockAction(name), "Unlocked. Anyone with the link can open it."),
   };
 }
 
