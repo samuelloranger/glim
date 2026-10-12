@@ -190,3 +190,19 @@ func TestHumanLeft(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewViewportTag(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	publish(t, st, "vp-1234", map[string]string{
+		"index.html": "<title>t</title><style>p{}</style><p>hi</p>",
+		"own.html":   `<html><head><META NAME='Viewport' content='width=600'></head><body></body></html>`,
+	}, time.Hour)
+	h := PreviewHandler(st)
+	want := `<meta name="viewport" content="width=device-width, initial-scale=1">`
+	if body := get(t, h, "/vp-1234/").Body.String(); !strings.HasPrefix(body, want) {
+		t.Errorf("headless page should start with the viewport tag: %s", body)
+	}
+	if body := get(t, h, "/vp-1234/own.html").Body.String(); strings.Contains(body, want) {
+		t.Errorf("page's own viewport was duplicated: %s", body)
+	}
+}
