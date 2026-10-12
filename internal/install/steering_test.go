@@ -18,6 +18,9 @@ func TestSteeringRulesDifferOnlyInArtifactsMention(t *testing.T) {
 		if !strings.Contains(r, sandboxNote) {
 			t.Errorf("missing sandbox note in %.40q", r)
 		}
+		if !strings.Contains(r, mobileNote) {
+			t.Errorf("missing mobile note in %.40q", r)
+		}
 	}
 }
 

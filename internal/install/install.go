@@ -17,17 +17,25 @@ const sandboxNote = "Previews run in a sandbox: write a self-contained page; loc
 	"IndexedDB and service workers throw (wrap them in try/catch), fetch/XHR of the page's own files works " +
 	"(not for password-protected previews: inline the data there), and scripts, styles and images from a CDN work."
 
+// mobileNote tells an agent that previews are often opened on a phone, so a
+// page must not assume a desktop-width window.
+const mobileNote = "Previews are often opened on a phone, so every page must read well at 375px wide: " +
+	"use fluid widths (max-width, %, minmax()) rather than fixed pixel widths, let grids and flex rows " +
+	"stack to one column when narrow, let long paths, URLs and code wrap (overflow-wrap: anywhere), and " +
+	"put wide tables, code blocks and diagrams in their own overflow-x: auto container so the page never " +
+	"scrolls sideways."
+
 const steeringBase = "To show the user any HTML, Markdown or other visual preview, call the glim `present` MCP tool " +
 	"and give the user the returned link. To update a preview, call `present` again with the same `name`: " +
 	"the link stays the same, and open tabs usually refresh by themselves (live reload, on by default). "
 
 // SteeringRule is the rule written for Claude, which has its own artifacts.
-const SteeringRule = steeringBase + sandboxNote +
+const SteeringRule = steeringBase + sandboxNote + " " + mobileNote +
 	" Do not use Claude artifacts or other built-in preview mechanisms."
 
 // SteeringRuleOther is the rule written for Codex and Cursor, which have no
 // Claude artifacts to steer away from.
-const SteeringRuleOther = steeringBase + sandboxNote +
+const SteeringRuleOther = steeringBase + sandboxNote + " " + mobileNote +
 	" Prefer it over other built-in preview mechanisms."
 
 const (
@@ -163,6 +171,9 @@ func installCursor(d Deps) ([]string, error) {
 // into managed blocks. They are recognised as glim's own content so an
 // upgrade replaces them instead of treating them as foreign text.
 var legacySteeringRules = []string{
+	// The wordings before the mobile note.
+	steeringBase + sandboxNote + " Do not use Claude artifacts or other built-in preview mechanisms.",
+	steeringBase + sandboxNote + " Prefer it over other built-in preview mechanisms.",
 	// The wording before the sandbox note, written for every agent.
 	"To show the user any HTML, Markdown or other visual preview, call the glim `present` MCP tool " +
 		"and give the user the returned link. To update a preview, call `present` again with the same `name`: " +

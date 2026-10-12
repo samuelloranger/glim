@@ -55,7 +55,7 @@ func newPreviewStore(t *testing.T) *store.Store {
 	st.Now = func() time.Time { return now }
 	publish(t, st, "demo-1234", map[string]string{
 		"index.html": "<html><head><title>t</title></head><body>hello</body></html>",
-		"page.html":  `<html><head><meta property="og:title" content="Mine"></head><body></body></html>`,
+		"page.html":  `<html><head><meta property="og:title" content="Mine"><meta name="viewport" content="width=600"></head><body></body></html>`,
 		"app.js":     "console.log(1)",
 		"big.html":   "<html><head></head>" + strings.Repeat("x", maxInjectSize+1) + "</html>",
 	}, time.Hour)
@@ -78,7 +78,7 @@ func TestPreviewInjectsCards(t *testing.T) {
 			t.Errorf("missing %s in %s", w, body)
 		}
 	}
-	if !strings.Contains(body, "</title><meta property=\"og:title\"") || !strings.HasSuffix(body, "hello</body></html>") {
+	if !strings.Contains(body, "</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta property=\"og:title\"") || !strings.HasSuffix(body, "hello</body></html>") {
 		t.Errorf("unexpected layout: %s", body)
 	}
 }
@@ -88,6 +88,9 @@ func TestPreviewDoesNotDuplicatePageTags(t *testing.T) {
 	body := get(t, h, "/demo-1234/page.html").Body.String()
 	if n := strings.Count(body, `og:title`); n != 1 {
 		t.Errorf("og:title appears %d times: %s", n, body)
+	}
+	if n := strings.Count(body, `name="viewport"`); n != 1 {
+		t.Errorf("viewport appears %d times: %s", n, body)
 	}
 	if !strings.Contains(body, `og:site_name`) {
 		t.Error("other tags should still be injected")
@@ -185,5 +188,30 @@ func TestHumanLeft(t *testing.T) {
 		if got := humanLeft(d); got != want {
 			t.Errorf("%v: %q want %q", d, got, want)
 		}
+	}
+}
+
+func TestPreviewViewportTag(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	publish(t, st, "vp-1234", map[string]string{
+		"index.html": "<title>t</title><style>p{}</style><p>hi</p>",
+		"own.html":   `<html><head><META NAME='Viewport' content='width=600'></head><body></body></html>`,
+	}, time.Hour)
+	h := PreviewHandler(st)
+	want := `<meta name="viewport" content="width=device-width, initial-scale=1">`
+	if body := get(t, h, "/vp-1234/").Body.String(); !strings.HasPrefix(body, want) {
+		t.Errorf("headless page should start with the viewport tag: %s", body)
+	}
+	if body := get(t, h, "/vp-1234/own.html").Body.String(); strings.Contains(body, want) {
+		t.Errorf("page's own viewport was duplicated: %s", body)
+	}
+	md := store.New(t.TempDir(), "https://glim.example.com")
+	src := filepath.Join(t.TempDir(), "notes.md")
+	writeFile(t, filepath.Dir(src), "notes.md", "# Notes\n\nhi\n")
+	if _, err := md.Publish(src, "", "", "", time.Hour, "md-1234"); err != nil {
+		t.Fatal(err)
+	}
+	if body := get(t, PreviewHandler(md), "/md-1234/").Body.String(); strings.Count(body, `name="viewport"`) != 1 {
+		t.Errorf("converted page should keep exactly one viewport: %s", body)
 	}
 }

@@ -47,7 +47,31 @@ To keep a preview private, add ` + "`--password`" + ` and pipe the password (8 t
 Republishing with ` + "`--name`" + ` and no ` + "`--password`" + ` keeps the existing password.
 
 Previews expire automatically. Remove one early with ` + "`glim rm <name>`" + `.
-`}
+`, `---
+name: glim
+description: Show the user an HTML, Markdown, text, JSON or image preview via a short-lived link. Use when a coding task benefits from a visual preview.
+---
+
+# glim
+
+Use glim to show the user a preview of something you built.
+
+1. Create a self-contained HTML file or directory (or a .md, .txt, .json or image file).
+2. Publish it: ` + "`glim <entry> --title <title>`" + `. ` + "`<entry>`" + ` is the file or directory.
+3. Give the user the link glim prints. For machine-readable output add ` + "`--json`" + ` (prints one JSON object with ` + "`url`" + ` and ` + "`name`" + `).
+
+To update a preview, republish to the same link with ` + "`--name <slug>`" + `. The link stays the
+same, and open tabs usually refresh by themselves (live reload, on by default).
+
+` + sandboxNote + `
+
+To keep a preview private, add ` + "`--password`" + ` and pipe the password (8 to 72 bytes) on stdin:
+` + "`printf '%s\\n' \"$PW\" | glim <entry> --password`" + `. Visitors must enter it first.
+Republishing with ` + "`--name`" + ` and no ` + "`--password`" + ` keeps the existing password.
+
+Previews expire automatically. Remove one early with ` + "`glim rm <name>`" + `.
+`,
+}
 
 // SkillText is the SKILL.md written by `glim install --skill`.
 const SkillText = `---
@@ -67,6 +91,8 @@ To update a preview, republish to the same link with ` + "`--name <slug>`" + `. 
 same, and open tabs usually refresh by themselves (live reload, on by default).
 
 ` + sandboxNote + `
+
+` + mobileNote + `
 
 To keep a preview private, add ` + "`--password`" + ` and pipe the password (8 to 72 bytes) on stdin:
 ` + "`printf '%s\\n' \"$PW\" | glim <entry> --password`" + `. Visitors must enter it first.

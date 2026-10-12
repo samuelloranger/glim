@@ -118,7 +118,8 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 			if bar {
 				body += ownerBar(m, slug, base)
 			}
-			return cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, declaredMeta(doc)), body
+			have := declaredMeta(doc)
+			return viewportTag(have) + cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, have), body
 		}) {
 			views.track(r, slug)
 			return
