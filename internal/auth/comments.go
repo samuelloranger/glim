@@ -26,6 +26,7 @@ var (
 	ErrCommentTooLong   = errors.New("comment is too long")
 	ErrTooManyComments  = errors.New("too many comments on this preview")
 	ErrCommentBadAnchor = errors.New("comment anchor is invalid")
+	ErrCommentBadText   = errors.New("comment text is not valid UTF-8")
 )
 
 // Comment is a note left on a preview from the glim bar, optionally anchored
@@ -64,7 +65,7 @@ type NewComment struct {
 func cleanText(s string, max int) (string, error) {
 	s = strings.TrimSpace(s)
 	if !utf8.ValidString(s) {
-		return "", ErrCommentBadAnchor
+		return "", ErrCommentBadText
 	}
 	if utf8.RuneCountInString(s) > max {
 		return "", ErrCommentTooLong

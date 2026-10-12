@@ -475,10 +475,13 @@ try {
     if (inBar(e)) { showHL(null); return; }
     showHL(e.target);
   }
+  // While picking, the page sees none of the input that makes the pick. Mouse
+  // buttons also lose their default (focus, selection); touch and keys keep
+  // theirs, so the page still scrolls and the browser still makes the click.
   function swallow(e) {
     if (inBar(e)) return;
     e.stopPropagation();
-    if (e.type !== "pointerdown") e.preventDefault();
+    if (/^(mousedown|mouseup|pointerup|auxclick|dblclick)$/.test(e.type)) e.preventDefault();
   }
   function onPickClick(e) {
     if (inBar(e)) return;
@@ -498,7 +501,8 @@ try {
   function onPickKey(e) {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); openList(); }
   }
-  var pickEvents = ["pointerdown", "mousedown", "mouseup", "pointerup", "auxclick", "dblclick"];
+  var pickEvents = ["pointerdown", "mousedown", "mouseup", "pointerup", "auxclick", "dblclick",
+    "touchstart", "touchend", "contextmenu", "keydown", "keyup", "keypress"];
   function startPick() {
     if (picking) return;
     picking = true;

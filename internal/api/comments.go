@@ -159,6 +159,8 @@ func (s *Server) failComment(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusBadRequest, "invalid", "Write something first.")
 	case errors.Is(err, auth.ErrCommentTooLong):
 		writeErr(w, http.StatusBadRequest, "invalid", fmt.Sprintf("Comments can be at most %d characters.", auth.MaxCommentBody))
+	case errors.Is(err, auth.ErrCommentBadText):
+		writeErr(w, http.StatusBadRequest, "invalid", "Comments must be plain text.")
 	case errors.Is(err, auth.ErrCommentBadAnchor):
 		writeErr(w, http.StatusBadRequest, "invalid", "That comment can't be saved. Try commenting on the whole page.")
 	case errors.Is(err, auth.ErrTooManyComments):

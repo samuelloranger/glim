@@ -103,7 +103,8 @@ func TestCommentValidation(t *testing.T) {
 		{NewComment{Preview: "p-0000", Body: "   "}, ErrCommentEmpty},
 		{NewComment{Preview: "p-0000", Body: strings.Repeat("é", MaxCommentBody+1)}, ErrCommentTooLong},
 		{NewComment{Preview: "p-0000", Body: "x", Selector: strings.Repeat("a", MaxCommentSelector+1)}, ErrCommentBadAnchor},
-		{NewComment{Preview: "p-0000", Body: "bad \xff utf8"}, ErrCommentBadAnchor},
+		{NewComment{Preview: "p-0000", Body: "bad \xff utf8"}, ErrCommentBadText},
+		{NewComment{Preview: "p-0000", Body: "x", Quote: "bad \xff utf8"}, ErrCommentBadAnchor},
 	} {
 		if _, err := db.AddComment(ctx, tc.in); !errors.Is(err, tc.want) {
 			t.Errorf("AddComment(%.40q) err = %v, want %v", tc.in.Body, err, tc.want)

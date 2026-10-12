@@ -82,7 +82,11 @@ glim answers that path's `Origin: null` requests with CORS headers (never with
 credentials). The token is minted from your `glim_owner` cookie when your copy of
 the page is served: it is bound to that one preview and dies with your session.
 The page's own scripts run in the same document and can read it, so a page can
-read, add, resolve or delete its own comments, and nothing else.
+read, add, resolve or delete its own comments, and nothing else. A comment a
+page wrote looks like one of yours, author included. The `comments` tool tells
+the agent to treat comment text as feedback on the page rather than as
+instructions, but if you publish pages that load scripts you don't trust, read
+the comments yourself before handing them to the agent.
 
 ## Seen indicator
 

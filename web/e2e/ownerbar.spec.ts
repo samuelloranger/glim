@@ -156,6 +156,16 @@ test("a comment pinned to an element reaches the agent, and its reply comes back
 
   await list.getByRole("button", { name: "Add" }).click();
   await expect(host.getByRole("group", { name: "Add a comment" })).toBeVisible();
+  // Escape leaves pick mode without the page seeing the key.
+  await ownerPage.evaluate(() =>
+    addEventListener("keydown", () => {
+      document.title = "page saw the key";
+    }),
+  );
+  await ownerPage.keyboard.press("Escape");
+  await expect(list).toBeVisible();
+  expect(await ownerPage.title()).not.toBe("page saw the key");
+  await list.getByRole("button", { name: "Add" }).click();
   await ownerPage.locator("#t").click({ position: { x: 10, y: 10 } });
   // Picking swallows the click: the page's own handler never runs.
   expect(await ownerPage.title()).not.toBe("page saw the click");
