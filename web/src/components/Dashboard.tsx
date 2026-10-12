@@ -19,6 +19,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { Filters } from "./Filters";
 import { LockDialog } from "./LockDialog";
 import { PreviewCard } from "./PreviewCard";
+import { ShareDialog } from "./ShareDialog";
 import { StatusBar } from "./StatusBar";
 import { ToastList } from "./Toasts";
 
@@ -34,6 +35,7 @@ export function Dashboard(props: {
   const [filters, setFilters] = createSignal<FilterValue>(filtersFromSearch(location.search));
   const [confirming, setConfirming] = createSignal<Preview | null>(null);
   const [locking, setLocking] = createSignal<Preview | null>(null);
+  const [sharing, setSharing] = createSignal<Preview | null>(null);
   const [ready, setReady] = createSignal(false);
   const [accountOpen, setAccountOpen] = createSignal(false);
 
@@ -170,6 +172,7 @@ export function Dashboard(props: {
                     onUnpin={() => void actions.unpin(p.name)}
                     onRemove={() => setConfirming(p)}
                     onCopy={() => void copy(p)}
+                    onShare={() => setSharing(p)}
                     onLock={() => setLocking(p)}
                     onUnlock={() => void actions.unlock(p.name)}
                   />
@@ -190,6 +193,11 @@ export function Dashboard(props: {
         confirmLabel="Remove"
         onConfirm={confirmRemove}
         onCancel={() => setConfirming(null)}
+      />
+      <ShareDialog
+        preview={sharing()}
+        title={sharing() ? displayTitle(sharing() as Preview) : ""}
+        onClose={() => setSharing(null)}
       />
       <LockDialog
         open={locking() !== null}

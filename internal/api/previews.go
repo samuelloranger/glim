@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/samuelloranger/glim/internal/auth"
+	"github.com/samuelloranger/glim/internal/qrcode"
 	"github.com/samuelloranger/glim/internal/store"
 )
 
@@ -124,6 +125,25 @@ func (s *Server) postUnlock(w http.ResponseWriter, r *http.Request, _ auth.Sessi
 		return
 	}
 	s.respondPreview(w, name)
+}
+
+// getQR serves the preview's link as a QR code, for the dashboard's share
+// dialog.
+func (s *Server) getQR(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	name, ok := s.livePreview(w, r)
+	if !ok {
+		return
+	}
+	code, err := qrcode.Encode(s.d.Store.URL(name))
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "image/svg+xml")
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+	h.Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write([]byte(code.SVG()))
 }
 
 func (s *Server) deletePreview(w http.ResponseWriter, r *http.Request, _ auth.Session) {

@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/samuelloranger/glim/internal/qrcode"
 )
 
 func TestListPreviews(t *testing.T) {
@@ -100,5 +102,28 @@ func TestExtendAcceptsDayUnit(t *testing.T) {
 	name := publishPreview(t, e.st, "Days", time.Hour)
 	if rec := e.do(http.MethodPost, "/_glim/api/previews/"+name+"/extend", map[string]string{"ttl": "3d"}, &s, nil); rec.Code != 200 {
 		t.Fatalf("ttl 3d = %d, want 200", rec.Code)
+	}
+}
+
+func TestQRCodeOfAPreviewLink(t *testing.T) {
+	e := newEnv(t)
+	sess := e.signIn("me@example.com")
+	name := publishPreview(t, e.st, "Share me", time.Hour)
+	rec := e.do("GET", "/_glim/api/previews/"+name+"/qr.svg", nil, &sess, nil)
+	if rec.Code != 200 {
+		t.Fatalf("qr = %d %s", rec.Code, rec.Body)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/svg+xml" {
+		t.Fatalf("content type %q", ct)
+	}
+	want, _ := qrcode.Encode(e.st.URL(name))
+	if rec.Body.String() != want.SVG() {
+		t.Fatal("body is not the QR code of the preview's link")
+	}
+	if rec := e.do("GET", "/_glim/api/previews/"+name+"/qr.svg", nil, nil, nil); rec.Code != 401 {
+		t.Fatalf("anonymous qr = %d", rec.Code)
+	}
+	if rec := e.do("GET", "/_glim/api/previews/gone-0000/qr.svg", nil, &sess, nil); rec.Code != 404 {
+		t.Fatalf("missing qr = %d", rec.Code)
 	}
 }

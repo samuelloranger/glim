@@ -2,7 +2,10 @@
 
 `glim serve` includes a private dashboard at the site root. Use it to see every
 live preview, with a live thumbnail and the time it has left. You can extend,
-pin, lock or remove a preview, and copy its link. Changes made elsewhere, such as a
+pin, lock or remove a preview, and copy or share its link. **Share** shows the
+link as a QR code, to open it on a phone by scanning the screen, with a **Copy
+link** button and, where the browser offers one, **Share…** for the system share
+sheet. Changes made elsewhere, such as a
 new publish from the CLI or an agent, or a preview expiring, show up within
 about two seconds without a reload.
 
@@ -20,8 +23,11 @@ it: it is only added when the request carries your valid `glim_owner` cookie
 exactly as published.
 
 The bar shows the preview's title (or its slug), the time it has left (or
-`Pinned`), a lock icon when it is password-protected, a **Copy link** button and
-a link back to the dashboard. It starts expanded on every load; the arrow
+`Pinned`), a lock icon when it is password-protected, a **Copy link** button, a
+**Share** button and a link back to the dashboard. Share opens a panel above the
+bar with the link as a QR code (drawn from data glim puts in the page, so it needs
+no request from the sandbox) and, where the browser offers one, a **Share…**
+button for the system share sheet; Escape or Share again closes it. It starts expanded on every load; the arrow
 collapses it to a small pill in the bottom-right corner and tapping the pill
 expands it again. Nothing is remembered between loads. It floats over the page
 without shifting its layout, lives in a closed shadow DOM so the page's CSS

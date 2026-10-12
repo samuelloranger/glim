@@ -126,6 +126,23 @@ test("copy link gives feedback or falls back to a selected link", async () => {
   if (await manual.isVisible()) await expect(manual).toHaveValue(new RegExp(`/${slug}/$`));
 });
 
+test("share opens the link as a QR code above the bar, and Escape closes it", async () => {
+  const slug = publish("Share demo", { body: "<h1>share</h1>" });
+  await ownerPage.goto(`/${slug}/`);
+  const host = ownerPage.locator("[data-glim-bar]");
+  const share = host.getByRole("button", { name: "Share link" });
+  await share.click();
+  await expect(share).toHaveAttribute("aria-expanded", "true");
+  const panel = host.getByRole("group", { name: "Share link" });
+  await expect(panel.getByRole("img", { name: "QR code of the link" })).toBeVisible();
+  await expect(panel.getByText(new RegExp(`/${slug}/$`))).toBeVisible();
+  const box = await panel.getByRole("img", { name: "QR code of the link" }).boundingBox();
+  expect(box?.width).toBeGreaterThan(150);
+  await ownerPage.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(share).toHaveAttribute("aria-expanded", "false");
+});
+
 test("the page's own layout is not shifted by the bar", async () => {
   const slug = publish("Layout demo", { body: "<body style='margin:0'><h1 id=h>top</h1></body>" });
   await ownerPage.goto(`/${slug}/`);

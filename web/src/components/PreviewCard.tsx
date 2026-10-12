@@ -20,6 +20,7 @@ export function PreviewCard(props: {
   onUnpin: () => void;
   onRemove: () => void;
   onCopy: () => void;
+  onShare: () => void;
   onLock: () => void;
   onUnlock: () => void;
 }) {
@@ -98,6 +99,9 @@ export function PreviewCard(props: {
         </a>
         <button class="btn quiet" type="button" onClick={() => props.onCopy()}>
           Copy link
+        </button>
+        <button class="btn quiet" type="button" onClick={() => props.onShare()}>
+          Share
         </button>
         <ExtendMenu onPick={(ttl, label) => props.onExtend(ttl, label)} />
         <Show

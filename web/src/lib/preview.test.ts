@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { displayTitle, thumbnailSrc } from "./preview";
+import { displayTitle, qrSrc, thumbnailSrc } from "./preview";
 
 test("thumbnailSrc changes when a preview is republished in place", () => {
   const a = thumbnailSrc({ name: "report-k3n7", created: "2026-01-01T00:00:00Z" });
@@ -11,4 +11,8 @@ test("thumbnailSrc changes when a preview is republished in place", () => {
 test("displayTitle falls back to the slug", () => {
   expect(displayTitle({ title: "Diff review", name: "diff-review-a1b2" })).toBe("Diff review");
   expect(displayTitle({ title: "  ", name: "diff-review-a1b2" })).toBe("diff-review-a1b2");
+});
+
+test("qrSrc points at the preview's QR code in the API", () => {
+  expect(qrSrc({ name: "report-k3n7" })).toBe("/_glim/api/previews/report-k3n7/qr.svg");
 });

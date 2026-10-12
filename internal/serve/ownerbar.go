@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/samuelloranger/glim/internal/qrcode"
 	"github.com/samuelloranger/glim/internal/store"
 )
 
@@ -13,13 +14,15 @@ import (
 var ownerBarJS string
 
 // ownerBarData is what the bar script reads; Exp is a unix-millisecond expiry,
-// 0 for a pinned preview.
+// 0 for a pinned preview. QR is the link as a QR code for the share panel,
+// drawn by the script, so the sandboxed page needs no request to show it.
 type ownerBarData struct {
-	Title  string `json:"title"`
-	URL    string `json:"url"`
-	Dash   string `json:"dash"`
-	Exp    int64  `json:"exp"`
-	Locked bool   `json:"locked"`
+	Title  string       `json:"title"`
+	URL    string       `json:"url"`
+	Dash   string       `json:"dash"`
+	Exp    int64        `json:"exp"`
+	Locked bool         `json:"locked"`
+	QR     *qrcode.Code `json:"qr,omitempty"`
 }
 
 // ownerBar returns the script tag injected for the dashboard owner. The data
@@ -37,6 +40,9 @@ func ownerBar(m store.Manifest, slug, base string) string {
 	}
 	if !m.Pinned {
 		d.Exp = m.Expires.UnixMilli()
+	}
+	if code, err := qrcode.Encode(d.URL); err == nil {
+		d.QR = &code
 	}
 	data, _ := json.Marshal(d)
 	return "<script>(function(D){" + ownerBarJS + "})(" + string(data) + ");</script>"
