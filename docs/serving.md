@@ -81,7 +81,8 @@ beyond that it answers `429`. Turn the feature off with
 ## Password-protected previews
 
 A preview whose manifest has a `password_hash` (set with `glim <entry>
---password`, `glim lock`, or the MCP `present` tool's `password`) is locked.
+--password`, `glim lock`, the dashboard's **Lock** button, or the MCP `present`
+tool's `password` or `lock` tool) is locked.
 Every request without a valid unlock cookie is refused: the HTML page gets a
 glim-owned unlock form with status `401`, and every other file gets a plain
 `401`. The form needs no external assets, and its link card says only

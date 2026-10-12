@@ -14,7 +14,7 @@ Restart the agent afterwards so it loads the new MCP server.
 For each agent it does two things:
 
 1. **Registers the MCP server** — a single stdio server, `glim mcp`, exposing a
-   `present` tool plus `list`, `get`, `revoke`, `pin` and `extend`.
+   `present` tool plus `list`, `get`, `revoke`, `pin`, `extend` and `lock`.
 2. **Writes a steering rule** into the agent's global instructions so it prefers
    glim for previews rather than its own mechanism.
 
@@ -91,7 +91,12 @@ need that password to see anything; glim stores only a bcrypt hash. When an agen
 republishes with `name` and omits `password`, the existing password is kept.
 `list` reports `locked: true` for protected previews. Since the password is
 tool input, it passes through the agent's context; use the `glim lock` command
-yourself if you would rather the agent never sees it.
+or the dashboard yourself if you would rather the agent never sees it.
+
+To lock a preview that is already live without republishing it, the agent calls
+`lock(name, password)`; calling it again with a new password replaces the old
+one. `lock(name, locked: false)` removes the password. Either change signs out
+every visitor who unlocked the preview before.
 
 ## What a preview page can do
 

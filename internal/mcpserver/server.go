@@ -141,6 +141,45 @@ func pinPreview(s *store.Store, defaultTTL time.Duration, in PinInput) (PinOutpu
 	return PinOutput{Pinned: in.Name}, nil
 }
 
+type LockInput struct {
+	Name     string `json:"name" jsonschema:"the preview slug to lock or unlock"`
+	Password string `json:"password,omitempty" jsonschema:"the new password (8-72 bytes); required unless unlocking. Replacing a password signs out everyone who unlocked the old one."`
+	Locked   *bool  `json:"locked,omitempty" jsonschema:"default true. Pass false to remove the password so anyone with the link can open the preview"`
+}
+
+type LockOutput struct {
+	Name   string `json:"name"`
+	Locked bool   `json:"locked" jsonschema:"true when the preview now needs a password"`
+}
+
+// lockPreview sets the preview's password, or removes it when in.Locked is
+// false.
+func lockPreview(s *store.Store, in LockInput) (LockOutput, error) {
+	if _, ok := s.Live(in.Name); !ok {
+		return LockOutput{}, fmt.Errorf("no such preview: %s", in.Name)
+	}
+	if in.Locked != nil && !*in.Locked {
+		if in.Password != "" {
+			return LockOutput{}, fmt.Errorf("pass either password (to lock) or locked=false (to unlock), not both")
+		}
+		if err := s.SetPasswordHash(in.Name, ""); err != nil {
+			return LockOutput{}, err
+		}
+		return LockOutput{Name: in.Name}, nil
+	}
+	if in.Password == "" {
+		return LockOutput{}, fmt.Errorf("password is required to lock a preview (pass locked=false to unlock it)")
+	}
+	hash, err := auth.HashPassword(in.Password)
+	if err != nil {
+		return LockOutput{}, passwordErr(err)
+	}
+	if err := s.SetPasswordHash(in.Name, hash); err != nil {
+		return LockOutput{}, err
+	}
+	return LockOutput{Name: in.Name, Locked: true}, nil
+}
+
 // resolvePath expands a leading ~/. A relative path still resolves against
 // this server's working directory, which most clients set to the project, but
 // that need not be the agent's current directory, so relative reports it.
@@ -431,6 +470,32 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 			OpenWorldHint:   boolPtr(false),
 		},
 	}, pin)
+
+	lock := func(_ context.Context, _ *mcp.CallToolRequest, in LockInput) (*mcp.CallToolResult, LockOutput, error) {
+		out, err := lockPreview(s, in)
+		if err != nil {
+			return nil, LockOutput{}, err
+		}
+		text := "Locked preview " + out.Name + "; visitors now need the password"
+		if !out.Locked {
+			text = "Unlocked preview " + out.Name + "; anyone with the link can open it"
+		}
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
+		return result, out, nil
+	}
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "lock",
+		Description: "Password-protect an existing live preview by its slug without republishing it, or replace its password. Pass locked=false (and no password) to remove the password.",
+		// Changes who can open the preview; the content is untouched, so not
+		// destructive. Idempotent for a given input; closed domain.
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    false,
+			DestructiveHint: boolPtr(false),
+			IdempotentHint:  true,
+			OpenWorldHint:   boolPtr(false),
+		},
+	}, lock)
 
 	extend := func(_ context.Context, _ *mcp.CallToolRequest, in ExtendInput) (*mcp.CallToolResult, ExtendOutput, error) {
 		out, err := extendPreview(s, in)

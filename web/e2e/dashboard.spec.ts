@@ -77,6 +77,32 @@ test("republishing in place refreshes the thumbnail", async () => {
   await expect.poll(async () => frame.getAttribute("src"), { timeout: 5000 }).not.toBe(before);
 });
 
+test("lock asks for a password, then unlock opens the preview again", async ({ request }) => {
+  const c = card("Report");
+  const slug = (await c.locator("code.slug").textContent()) ?? "";
+  await c.hover();
+  await c.getByRole("button", { name: "Lock", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Lock Report" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Password", { exact: true }).fill("open sesame");
+  await dialog.getByLabel("Repeat password").fill("open sesam");
+  await dialog.getByRole("button", { name: "Lock" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("don't match");
+  await dialog.getByLabel("Repeat password").fill("open sesame");
+  await dialog.getByRole("button", { name: "Lock" }).click();
+  await expect(page.getByText("Locked. Visitors need the password.")).toBeVisible();
+  await expect(dialog).toBeHidden();
+  await expect(c.getByText("locked", { exact: true })).toBeVisible();
+  // A visitor without the owner cookie gets the unlock form.
+  expect((await request.get(`/${slug}/`)).status()).toBe(401);
+
+  await c.hover();
+  await c.getByRole("button", { name: "Unlock", exact: true }).click();
+  await expect(page.getByText("Unlocked. Anyone with the link can open it.")).toBeVisible();
+  await expect(c.getByText("locked", { exact: true })).toHaveCount(0);
+  expect((await request.get(`/${slug}/`)).status()).toBe(200);
+});
+
 test("filters narrow the grid and live in the URL", async () => {
   publish("Login flow", { project: "web" });
   await expect(card("Login flow")).toBeVisible({ timeout: 5000 });
