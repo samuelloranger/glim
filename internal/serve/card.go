@@ -84,6 +84,16 @@ func plural(n int, unit string) string {
 	return s
 }
 
+// viewportTag returns a mobile viewport tag when the page declares none.
+// Without one, phones lay the page out at a desktop width and shrink it, so a
+// page written for an injected skeleton still reads at phone width.
+func viewportTag(have map[string]bool) string {
+	if have["viewport"] {
+		return ""
+	}
+	return `<meta name="viewport" content="width=device-width, initial-scale=1">` + "\n"
+}
+
 // cardTags builds the Open Graph and Twitter tags for a preview, minus any the
 // page already declares.
 func cardTags(m store.Manifest, slug, pageURL, imageURL string, now time.Time, have map[string]bool) string {

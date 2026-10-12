@@ -55,7 +55,7 @@ func newPreviewStore(t *testing.T) *store.Store {
 	st.Now = func() time.Time { return now }
 	publish(t, st, "demo-1234", map[string]string{
 		"index.html": "<html><head><title>t</title></head><body>hello</body></html>",
-		"page.html":  `<html><head><meta property="og:title" content="Mine"></head><body></body></html>`,
+		"page.html":  `<html><head><meta property="og:title" content="Mine"><meta name="viewport" content="width=600"></head><body></body></html>`,
 		"app.js":     "console.log(1)",
 		"big.html":   "<html><head></head>" + strings.Repeat("x", maxInjectSize+1) + "</html>",
 	}, time.Hour)
@@ -78,7 +78,7 @@ func TestPreviewInjectsCards(t *testing.T) {
 			t.Errorf("missing %s in %s", w, body)
 		}
 	}
-	if !strings.Contains(body, "</title><meta property=\"og:title\"") || !strings.HasSuffix(body, "hello</body></html>") {
+	if !strings.Contains(body, "</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta property=\"og:title\"") || !strings.HasSuffix(body, "hello</body></html>") {
 		t.Errorf("unexpected layout: %s", body)
 	}
 }
@@ -88,6 +88,9 @@ func TestPreviewDoesNotDuplicatePageTags(t *testing.T) {
 	body := get(t, h, "/demo-1234/page.html").Body.String()
 	if n := strings.Count(body, `og:title`); n != 1 {
 		t.Errorf("og:title appears %d times: %s", n, body)
+	}
+	if n := strings.Count(body, `name="viewport"`); n != 1 {
+		t.Errorf("viewport appears %d times: %s", n, body)
 	}
 	if !strings.Contains(body, `og:site_name`) {
 		t.Error("other tags should still be injected")
