@@ -9,6 +9,8 @@ export type Preview = {
   url: string;
   views: number;
   lastSeen: string | null;
+  /** Unresolved comments left from the glim bar. */
+  comments: number;
 };
 
 export type Status = {

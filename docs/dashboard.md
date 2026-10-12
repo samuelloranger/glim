@@ -37,6 +37,10 @@ Copy link uses the clipboard API and falls back to the older copy command; if
 the browser refuses both inside the preview sandbox, the bar shows the link
 selected so you can copy it by hand.
 
+Clicks and key presses on the bar stay in the bar: the page's own handlers on
+`window` or `document` don't see them (only capturing listeners can), so a deck
+that turns the slide on any click doesn't move when you use the bar.
+
 The bar is a serve-time injection, like live reload, so it is not added to:
 
 - HTML larger than 5 MB, non-HTML files, and the password unlock page;
@@ -48,6 +52,37 @@ no-store`, so no shared cache ever hands your bar to someone else.
 Turn it off for one preview with `--no-header` on publish (or the MCP
 `present` tool's `header: false`), which is not remembered on republish, or for
 the whole server with `glim config --header=false` (config key `header`).
+
+## Comments
+
+The glim bar has a **Comment** button, with a badge counting the open comments.
+It opens the list of comments on the preview. **Add** lets you click the part of
+the page you mean (it is outlined as you hover, and the click does nothing on
+the page itself), or choose **Whole page**. Write the comment and press
+**Comment** (or Ctrl/Cmd+Enter). Open comments pinned to an element show as
+numbered pins on the page; tapping a pin opens the list at that comment.
+
+Your agent reads them with the MCP `comments` tool, changes the page, and
+calls `resolve_comment`, optionally with a short reply that appears under the
+comment (see [Agent integration](./agents.md#comments)). Each comment can be
+resolved, reopened or deleted from the list. A comment made before the preview
+was last republished is marked "on an earlier version", since the element it
+points at may have changed. Dashboard cards show the number of open comments,
+and the list refreshes each time you open it, so replies show up without a
+reload.
+
+Comments live in `~/.glim/glim.db` and are deleted with their preview. A preview
+holds at most 500 comments of up to 4,000 characters. They are only reachable
+from the bar, so a preview published with `--no-header`, or a server with the
+bar turned off, has no comment UI.
+
+The preview page is sandboxed and sends no cookies, so the bar talks to
+`/_glim/api/bar/<slug>/comments` with a token in an `X-Glim-Bar` header, and
+glim answers that path's `Origin: null` requests with CORS headers (never with
+credentials). The token is minted from your `glim_owner` cookie when your copy of
+the page is served: it is bound to that one preview and dies with your session.
+The page's own scripts run in the same document and can read it, so a page can
+read, add, resolve or delete its own comments, and nothing else.
 
 ## Seen indicator
 
@@ -155,6 +190,8 @@ has to switch Notifications off and on again.
   hop, which the proxy appended, is used. A client on a private network can
   still prepend a public address that is believed; per-account backoff and the
   per-preview unlock cap bound what that buys.
+- The glim bar's comment token (see [Comments](#comments)) only reaches
+  that one preview's comments, and dies with the session like the cookie.
 - The `glim_owner` cookie is scoped to `/` so it reaches previews. It is a
   signed marker tied to your session. It skips counting your own opens and
   bypasses [locked previews](./serving.md); it dies with the session and

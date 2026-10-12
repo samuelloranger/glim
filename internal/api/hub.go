@@ -10,7 +10,8 @@ import (
 )
 
 // Hub watches the preview root and fans snapshots out to SSE subscribers.
-// Publishes happen in other processes, so it polls a cheap fingerprint.
+// Publishes (and comments resolved over MCP) happen in other processes, so it
+// polls a cheap fingerprint of the root and of the comments.
 type Hub struct {
 	st       *store.Store
 	auth     *auth.DB
@@ -70,6 +71,11 @@ func (h *Hub) Rescan(force bool) {
 	if err != nil {
 		h.logf("hub: %v", err)
 		return
+	}
+	if h.auth != nil {
+		if stamp, err := h.auth.CommentsStamp(context.Background()); err == nil {
+			fp += "|" + stamp
+		}
 	}
 	h.mu.Lock()
 	next := h.current.Status.NextExpiry

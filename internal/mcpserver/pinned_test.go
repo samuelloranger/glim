@@ -17,7 +17,7 @@ func TestListPreviewsReportsPinnedWithoutExpiry(t *testing.T) {
 	if err := s.Pin(pinned); err != nil {
 		t.Fatal(err)
 	}
-	out, err := listPreviews(s, ListInput{}, nil)
+	out, err := listPreviews(s, ListInput{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

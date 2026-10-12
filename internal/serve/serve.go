@@ -116,7 +116,7 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 				body = liveScript(base + LivePathPrefix + slug + "?v=" + v)
 			}
 			if bar {
-				body += ownerBar(m, slug, base)
+				body += ownerBar(m, slug, base, views.barToken(r, slug))
 			}
 			have := declaredMeta(doc)
 			return viewportTag(have) + cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, have), body

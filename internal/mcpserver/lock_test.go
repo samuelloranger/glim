@@ -31,7 +31,7 @@ func TestPresentPasswordParam(t *testing.T) {
 	if m, _ := s.Get("locked-1234"); !m.Locked() {
 		t.Fatal("republish without password dropped the lock")
 	}
-	out, _ := listPreviews(s, ListInput{}, nil)
+	out, _ := listPreviews(s, ListInput{}, nil, nil)
 	if len(out.Previews) != 1 || !out.Previews[0].Locked {
 		t.Fatalf("list = %+v", out.Previews)
 	}

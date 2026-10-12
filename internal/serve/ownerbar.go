@@ -16,6 +16,8 @@ var ownerBarJS string
 // ownerBarData is what the bar script reads; Exp is a unix-millisecond expiry,
 // 0 for a pinned preview. QR is the link as a QR code for the share panel,
 // drawn by the script, so the sandboxed page needs no request to show it.
+// API and Tok, both empty when comments are off, are the bar's comment
+// endpoint and the token it sends there.
 type ownerBarData struct {
 	Title  string       `json:"title"`
 	URL    string       `json:"url"`
@@ -23,12 +25,14 @@ type ownerBarData struct {
 	Exp    int64        `json:"exp"`
 	Locked bool         `json:"locked"`
 	QR     *qrcode.Code `json:"qr,omitempty"`
+	API    string       `json:"api,omitempty"`
+	Tok    string       `json:"tok,omitempty"`
 }
 
 // ownerBar returns the script tag injected for the dashboard owner. The data
 // goes through json.Marshal, which escapes <, > and &, so a title can never
 // close the script element; the script itself is an IIFE that swallows errors.
-func ownerBar(m store.Manifest, slug, base string) string {
+func ownerBar(m store.Manifest, slug, base, commentToken string) string {
 	d := ownerBarData{
 		Title:  m.Title,
 		URL:    base + "/" + slug + "/",
@@ -43,6 +47,10 @@ func ownerBar(m store.Manifest, slug, base string) string {
 	}
 	if code, err := qrcode.Encode(d.URL); err == nil {
 		d.QR = &code
+	}
+	if commentToken != "" {
+		d.API = base + "/_glim/api/bar/" + slug + "/comments"
+		d.Tok = commentToken
 	}
 	data, _ := json.Marshal(d)
 	return "<script>(function(D){" + ownerBarJS + "})(" + string(data) + ");</script>"

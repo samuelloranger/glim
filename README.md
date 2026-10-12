@@ -52,6 +52,8 @@ every preview, a countdown and a seen count for each one, and lets you extend, p
 remove them. It updates in real time. The first visit creates the account with an
 email and password, so do that before exposing the server. See
 [docs/dashboard.md](docs/dashboard.md).
+Comments you leave on a preview from its glim bar reach your agent through the
+MCP `comments` tool, and its replies come back under them.
 Over HTTPS it also installs as an app (iPhone Home Screen included) and can send a
 notification when a preview is published; see
 [docs/dashboard.md](docs/dashboard.md#install-as-an-app-and-notifications).
@@ -83,7 +85,7 @@ elapses; expired previews are pruned on the next command and by `glim gc`.
 ## Agent integration (MCP)
 
 `glim install <agent>` registers glim's MCP server (tools: `present`, `list`,
-`get`, `revoke`, `pin`, `extend`, `lock`) and writes a steering rule so the agent prefers glim
+`get`, `revoke`, `pin`, `extend`, `lock`, `comments`, `resolve_comment`) and writes a steering rule so the agent prefers glim
 for previews. Supported: Claude, Codex, Cursor. `glim install --skill <agent>`
 writes a `SKILL.md` instead (no MCP server), and `glim uninstall <agent>` removes
 either setup.

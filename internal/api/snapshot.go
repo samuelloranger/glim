@@ -21,6 +21,8 @@ type Preview struct {
 	// Views counts real page opens; LastSeen is the latest one, null if never.
 	Views    int64      `json:"views"`
 	LastSeen *time.Time `json:"lastSeen"`
+	// Comments counts the unresolved comments left from the glim bar.
+	Comments int `json:"comments"`
 	// Stamp changes on every republish; the push notifier watches it.
 	Stamp string `json:"-"`
 }
@@ -46,6 +48,19 @@ func toPreview(st *store.Store, m store.Manifest, v auth.ViewStat) Preview {
 		p.LastSeen = &t
 	}
 	return p
+}
+
+// openComments loads every preview's unresolved comment count; like the view
+// stats it is decoration, so a nil db or a read error yields none.
+func openComments(a *auth.DB) map[string]int {
+	if a == nil {
+		return nil
+	}
+	counts, err := a.OpenCommentCounts(context.Background())
+	if err != nil {
+		return nil
+	}
+	return counts
 }
 
 // viewStats loads every preview's stats; a nil db or a read error yields none,
@@ -81,8 +96,11 @@ func BuildSnapshot(st *store.Store, a *auth.DB) (Snapshot, error) {
 	snap.Status.Live = len(list)
 	snap.Status.DiskBytes = disk
 	stats := viewStats(a)
+	comments := openComments(a)
 	for _, m := range list {
-		snap.Previews = append(snap.Previews, toPreview(st, m, stats[m.Name]))
+		p := toPreview(st, m, stats[m.Name])
+		p.Comments = comments[m.Name]
+		snap.Previews = append(snap.Previews, p)
 		if m.Pinned {
 			snap.Status.Pinned++
 			continue

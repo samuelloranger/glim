@@ -33,7 +33,7 @@ func TestListPreviews(t *testing.T) {
 	publish(t, s, "First", "alpha", time.Hour)
 	publish(t, s, "Second", "beta", time.Hour)
 
-	out, err := listPreviews(s, ListInput{}, nil)
+	out, err := listPreviews(s, ListInput{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestListPreviewsIncludesViews(t *testing.T) {
 	seen := publish(t, s, "Seen", "alpha", time.Hour)
 	publish(t, s, "Fresh", "alpha", time.Hour)
 	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	out, err := listPreviews(s, ListInput{}, map[string]auth.ViewStat{seen: {Count: 4, LastSeen: at}})
+	out, err := listPreviews(s, ListInput{}, map[string]auth.ViewStat{seen: {Count: 4, LastSeen: at}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestListPreviewsFiltersByProject(t *testing.T) {
 	publish(t, s, "First", "alpha", time.Hour)
 	publish(t, s, "Second", "beta", time.Hour)
 
-	out, err := listPreviews(s, ListInput{Project: "beta"}, nil)
+	out, err := listPreviews(s, ListInput{Project: "beta"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestRevokePreview(t *testing.T) {
 	if out.Revoked != name {
 		t.Fatalf("want revoked %q, got %q", name, out.Revoked)
 	}
-	list, err := listPreviews(s, ListInput{}, nil)
+	list, err := listPreviews(s, ListInput{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

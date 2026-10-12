@@ -101,6 +101,13 @@ func (s *Server) routes() {
 	m.Handle("GET /_glim/api/push/key", s.authed(s.getPushKey))
 	m.Handle("POST /_glim/api/push/subscribe", s.authed(s.postPushSubscribe))
 	m.Handle("POST /_glim/api/push/unsubscribe", s.authed(s.postPushUnsubscribe))
+	// The glim bar's comment endpoints, called from the sandboxed preview page.
+	m.HandleFunc("OPTIONS /_glim/api/bar/{name}/comments", s.barPreflight)
+	m.HandleFunc("OPTIONS /_glim/api/bar/{name}/comments/{id}", s.barPreflight)
+	m.Handle("GET /_glim/api/bar/{name}/comments", s.barAuthed(s.getBarComments))
+	m.Handle("POST /_glim/api/bar/{name}/comments", s.barAuthed(s.postBarComment))
+	m.Handle("PATCH /_glim/api/bar/{name}/comments/{id}", s.barAuthed(s.patchBarComment))
+	m.Handle("DELETE /_glim/api/bar/{name}/comments/{id}", s.barAuthed(s.deleteBarComment))
 	m.HandleFunc("/_glim/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not_found", "No such endpoint.")
 	})

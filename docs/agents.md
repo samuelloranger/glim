@@ -14,7 +14,8 @@ Restart the agent afterwards so it loads the new MCP server.
 For each agent it does two things:
 
 1. **Registers the MCP server** — a single stdio server, `glim mcp`, exposing a
-   `present` tool plus `list`, `get`, `revoke`, `pin`, `extend` and `lock`.
+   `present` tool plus `list`, `get`, `revoke`, `pin`, `extend`, `lock`,
+   `comments` and `resolve_comment`.
 2. **Writes a steering rule** into the agent's global instructions so it prefers
    glim for previews rather than its own mechanism.
 
@@ -150,6 +151,34 @@ error as the other tools.
 `present` also states the slug and expiry in its text (`name: <slug> · expires:
 <RFC3339>`, or `pinned`) for clients that read only text, and `list` includes
 each preview's expiry.
+
+## Comments
+
+You leave comments on a preview from the glim bar (see
+[Comments](/dashboard#comments)); the agent reads and answers them over MCP:
+
+```
+comments(name?, include_resolved?) → { comments: [{ id, preview, url, author?, body, selector?, quote?, reply?, resolved, stale?, created }] }
+resolve_comment(id, reply?, resolved?) → { id, ..., resolved, reply? }
+```
+
+`comments` returns the open comments of one preview, or of every live preview
+when `name` is omitted, oldest first. A comment pinned to an element carries a
+CSS `selector` for it and `quote`, the start of its text when the comment was
+made; a comment on the whole page has neither. `stale: true` means the preview
+was republished since, so the element may have moved or changed.
+
+The loop: the user says they left feedback, the agent calls `comments`, edits
+the page, republishes it with `present` and the same `name`, then calls
+`resolve_comment` for each comment it handled, with a short `reply` saying what
+changed. The reply shows under the comment in the bar. `resolved: false` saves a
+reply but leaves the comment open, for a question back to the user.
+
+`list` and `get` report `comments`, the number of open comments, and a `present`
+that updates a preview with open comments says so in its text.
+
+Comments are stored in the dashboard database; until `glim serve` has created
+it (by creating the dashboard account), both tools return an error.
 
 ## Why a rule as well as a tool
 

@@ -89,6 +89,17 @@ export function PreviewCard(props: {
         <Show when={props.preview.project}>
           <span class="chip">{props.preview.project}</span>
         </Show>
+        <Show when={props.preview.comments > 0}>
+          <a
+            class="chip comments"
+            href={href()}
+            target="_blank"
+            rel="noopener"
+            title="Open the preview to read them in the glim bar"
+          >
+            {props.preview.comments === 1 ? "1 comment" : `${props.preview.comments} comments`}
+          </a>
+        </Show>
         <span class={["seen", { never: props.preview.views <= 0 }]}>
           {formatSeen(props.preview.views, props.preview.lastSeen, props.now)}
         </span>

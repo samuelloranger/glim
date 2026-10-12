@@ -46,6 +46,9 @@ type Views struct {
 	Record func(name string)
 	// IsOwner validates a glim_owner cookie value; nil means nobody is owner.
 	IsOwner func(token string) bool
+	// BarToken mints the glim bar's comment token for slug from a glim_owner
+	// cookie value (see auth.DB.BarToken); nil or "" leaves comments off.
+	BarToken func(ownerCookie, slug string) string
 }
 
 func (v *Views) track(r *http.Request, name string) {
@@ -56,6 +59,18 @@ func (v *Views) track(r *http.Request, name string) {
 		return
 	}
 	v.Record(name)
+}
+
+// barToken returns the comment token for the glim bar on slug, or "".
+func (v *Views) barToken(r *http.Request, slug string) string {
+	if v == nil || v.BarToken == nil {
+		return ""
+	}
+	c, err := r.Cookie(auth.OwnerCookie)
+	if err != nil {
+		return ""
+	}
+	return v.BarToken(c.Value, slug)
 }
 
 // owner reports whether r carries a valid owner cookie.
