@@ -1,5 +1,5 @@
 // The owner-only glim bar. Wrapped by ownerbar.go as function(D){...}(data);
-// D is {title, url, dash, exp, locked}. It renders a fixed, closed shadow DOM
+// D is {title, url, dash, exp, locked, qr?: {size, path}}. It renders a fixed, closed shadow DOM
 // overlay, never touches page layout, and swallows every error. On narrow
 // screens the bar docks to the bottom edge and pads itself by the safe-area
 // insets; on wider ones it floats as a rounded bar.
@@ -53,6 +53,11 @@ try {
     ".man{pointer-events:auto;position:absolute;left:8px;right:8px;bottom:100%;" +
     "max-width:640px;margin:0 auto;padding:6px;border-radius:10px;background:var(--bg);border:1px solid var(--bd);" +
     "box-shadow:0 2px 12px rgba(0,0,0,.22)}" +
+    ".sp{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px}" +
+    ".qr{display:block;width:176px;height:176px;border-radius:6px}" +
+    ".sp .u{max-width:100%;color:var(--mut);font:12px/1.4 monospace;overflow-wrap:anywhere;text-align:center;" +
+    "user-select:text;-webkit-user-select:text}" +
+    ".sp button{border:1px solid var(--bd)}" +
     ".man input{all:unset;box-sizing:border-box;display:block;width:100%;padding:6px 8px;color:var(--fg);font:12px monospace;" +
     "user-select:text;-webkit-user-select:text}" +
     // Narrow screens: a flat strip flush with the bottom edge, padded by the
@@ -147,6 +152,10 @@ try {
   copy.appendChild(icon(["M9 9h11v11H9z", "M5 15V5h10"], 15));
   var cl = el("span", "lb", "Copy link");
   copy.appendChild(cl);
+  var share = btn("button", "Share link");
+  share.setAttribute("aria-expanded", "false");
+  share.appendChild(icon(["M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7", "M16 6l-4-4-4 4", "M12 2v13"], 15));
+  share.appendChild(el("span", "lb", "Share"));
   var dash = btn("a", "Back to dashboard");
   dash.href = D.dash;
   dash.target = "_self";
@@ -158,6 +167,7 @@ try {
   bar.appendChild(title);
   bar.appendChild(meta);
   bar.appendChild(copy);
+  bar.appendChild(share);
   bar.appendChild(dash);
   bar.appendChild(col);
 
@@ -166,8 +176,12 @@ try {
   pill.appendChild(mark(14));
   pill.appendChild(el("span", "", "glim"));
 
+  // One panel above the bar at a time: the hand-copy link or the share panel.
   var man = null;
-  function closeManual() { if (man) { man.remove(); man = null; } }
+  function closeManual() {
+    if (man) { man.remove(); man = null; }
+    share.setAttribute("aria-expanded", "false");
+  }
   function manual() {
     closeManual();
     man = el("div", "man");
@@ -211,6 +225,53 @@ try {
       }
     } catch (e) {}
     fallback();
+  });
+
+  // The share panel: the link as a QR code to scan from another device, and
+  // the system share sheet where the browser offers one.
+  function qrSVG() {
+    var q = D.qr, s = doc.createElementNS(NS, "svg");
+    s.setAttribute("class", "qr");
+    s.setAttribute("viewBox", "0 0 " + q.size + " " + q.size);
+    s.setAttribute("shape-rendering", "crispEdges");
+    s.setAttribute("role", "img");
+    s.setAttribute("aria-label", "QR code of the link");
+    var bg = doc.createElementNS(NS, "rect");
+    bg.setAttribute("width", q.size);
+    bg.setAttribute("height", q.size);
+    bg.setAttribute("fill", "#fff");
+    var p = doc.createElementNS(NS, "path");
+    p.setAttribute("d", q.path);
+    p.setAttribute("fill", "#000");
+    s.appendChild(bg);
+    s.appendChild(p);
+    return s;
+  }
+  function openShare() {
+    closeManual();
+    man = el("div", "man sp");
+    man.setAttribute("role", "group");
+    man.setAttribute("aria-label", "Share link");
+    if (D.qr) man.appendChild(qrSVG());
+    man.appendChild(el("span", "u", D.url));
+    if (navigator.share) {
+      var native = el("button", "", "Share…");
+      native.addEventListener("click", function () {
+        try {
+          navigator.share({ title: D.title, url: D.url }).then(closeManual, function () {});
+        } catch (e) {}
+      });
+      man.appendChild(native);
+    }
+    w.appendChild(man);
+    share.setAttribute("aria-expanded", "true");
+  }
+  share.addEventListener("click", function () {
+    if (share.getAttribute("aria-expanded") === "true") closeManual();
+    else openShare();
+  });
+  host.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && man) { closeManual(); share.focus(); }
   });
 
   function set(collapsed) {

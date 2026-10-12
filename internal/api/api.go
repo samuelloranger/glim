@@ -91,6 +91,7 @@ func (s *Server) routes() {
 	m.Handle("POST /_glim/api/previews/{name}/unpin", s.authed(s.postUnpin))
 	m.Handle("POST /_glim/api/previews/{name}/lock", s.authed(s.postLock))
 	m.Handle("POST /_glim/api/previews/{name}/unlock", s.authed(s.postUnlock))
+	m.Handle("GET /_glim/api/previews/{name}/qr.svg", s.authed(s.getQR))
 	m.Handle("DELETE /_glim/api/previews/{name}", s.authed(s.deletePreview))
 	m.Handle("GET /_glim/api/events", s.authed(s.getEvents))
 	m.Handle("GET /_glim/api/users", s.authed(s.getUsers))

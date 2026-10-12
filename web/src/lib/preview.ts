@@ -8,3 +8,8 @@ export function thumbnailSrc(p: Pick<Preview, "name" | "created">): string {
 export function displayTitle(p: Pick<Preview, "title" | "name">): string {
   return p.title.trim() || p.name;
 }
+
+/** The dashboard API's QR code of the preview's link. */
+export function qrSrc(p: Pick<Preview, "name">): string {
+  return `/_glim/api/previews/${encodeURIComponent(p.name)}/qr.svg`;
+}

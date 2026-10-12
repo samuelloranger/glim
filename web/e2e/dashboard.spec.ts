@@ -67,6 +67,26 @@ test("extend, pin and copy update in place", async () => {
   await expect(page.getByText("Link copied")).toBeVisible();
 });
 
+test("share shows the link as a QR code and copies it", async () => {
+  const c = card("Diff review");
+  await c.hover();
+  await c.getByRole("button", { name: "Share", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Share Diff review" });
+  await expect(dialog).toBeVisible();
+  const qr = dialog.getByRole("img", { name: "QR code of the link" });
+  await expect(qr).toBeVisible();
+  await expect
+    .poll(() => qr.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(dialog.getByRole("textbox", { name: "Link" })).toHaveValue(
+    /\/diff-review-[a-z0-9]+\/$/,
+  );
+  await dialog.getByRole("button", { name: "Copy link" }).click();
+  await expect(dialog.getByRole("button", { name: "Copied" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await expect(dialog).toBeHidden();
+});
+
 test("republishing in place refreshes the thumbnail", async () => {
   const slug = publish("Report", {});
   const frame = card("Report").locator("iframe");

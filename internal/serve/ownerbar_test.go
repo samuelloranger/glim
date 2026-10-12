@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/samuelloranger/glim/internal/auth"
+	"github.com/samuelloranger/glim/internal/qrcode"
 	"github.com/samuelloranger/glim/internal/store"
 )
 
@@ -257,4 +259,17 @@ func contains(vals []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestOwnerBarCarriesTheLinkAsAQRCode(t *testing.T) {
+	e := newBarEnv(t)
+	e.publish(t, "T", false, map[string]string{"index.html": barPage})
+	want, err := qrcode.Encode("https://glim.example.com/" + e.slug + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(want)
+	if body := e.do("/"+e.slug+"/", nil, e.owner).Body.String(); !strings.Contains(body, `"qr":`+string(data)) {
+		t.Fatal("bar data lacks the QR code of the preview's link")
+	}
 }
