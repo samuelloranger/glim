@@ -1,5 +1,5 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
-import { publish } from "./util";
+import { mcpCall, publish } from "./util";
 
 const PASSWORD = "correct horse battery";
 const EMAIL = "sam@example.com";
@@ -141,6 +141,65 @@ test("share opens the link as a QR code above the bar, and Escape closes it", as
   await ownerPage.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
   await expect(share).toHaveAttribute("aria-expanded", "false");
+});
+
+test("a comment pinned to an element reaches the agent, and its reply comes back", async () => {
+  const slug = publish("Comment demo", {
+    body: `<main><h1 id="t" style="margin:40px">Quarterly plan</h1><p>Body text</p></main>
+      <script>addEventListener("click", () => { document.title = "page saw the click"; });</script>`,
+  });
+  await ownerPage.goto(`/${slug}/`);
+  const host = ownerPage.locator("[data-glim-bar]");
+  await host.getByRole("button", { name: "Comments" }).click();
+  const list = host.getByRole("group", { name: "Comments" });
+  await expect(list.getByText("No comments yet.", { exact: false })).toBeVisible();
+
+  await list.getByRole("button", { name: "Add" }).click();
+  await expect(host.getByRole("group", { name: "Add a comment" })).toBeVisible();
+  // Escape leaves pick mode without the page seeing the key.
+  await ownerPage.evaluate(() =>
+    addEventListener("keydown", () => {
+      document.title = "page saw the key";
+    }),
+  );
+  await ownerPage.keyboard.press("Escape");
+  await expect(list).toBeVisible();
+  expect(await ownerPage.title()).not.toBe("page saw the key");
+  await list.getByRole("button", { name: "Add" }).click();
+  await ownerPage.locator("#t").click({ position: { x: 10, y: 10 } });
+  // Picking swallows the click: the page's own handler never runs.
+  expect(await ownerPage.title()).not.toBe("page saw the click");
+  const composer = host.getByRole("group", { name: "New comment" });
+  await expect(composer.getByText("On “Quarterly plan”")).toBeVisible();
+  await composer.getByRole("textbox", { name: "Comment" }).fill("Make the title bigger");
+  await composer.getByRole("button", { name: "Comment", exact: true }).click();
+
+  await expect(list.getByText("Make the title bigger")).toBeVisible();
+  await expect(host.getByRole("button", { name: "Comments (1 open)" })).toBeVisible();
+  const pin = host.getByRole("button", { name: "Comment 1" });
+  await expect(pin).toBeVisible();
+  const [p, h] = [await pin.boundingBox(), await ownerPage.locator("#t").boundingBox()];
+  expect(Math.abs((p?.x ?? 0) - (h?.x ?? 0))).toBeLessThan(30);
+
+  // The agent reads it over MCP and answers.
+  const read = (await mcpCall("comments", { name: slug })) as {
+    comments: { id: number; body: string; quote: string; selector: string }[];
+  };
+  expect(read.comments).toHaveLength(1);
+  expect(read.comments[0]?.body).toBe("Make the title bigger");
+  expect(read.comments[0]?.quote).toBe("Quarterly plan");
+  expect(read.comments[0]?.selector).toBe("#t");
+  await mcpCall("resolve_comment", { id: read.comments[0]?.id, reply: "Title is now 2.5rem." });
+
+  await ownerPage.reload();
+  await expect(host.getByRole("button", { name: "Comments", exact: true })).toBeVisible();
+  await expect(host.getByRole("button", { name: "Comment 1" })).toHaveCount(0);
+  await host.getByRole("button", { name: "Comments", exact: true }).click();
+  await list.getByRole("button", { name: "Show resolved (1)" }).click();
+  await expect(list.getByText("Title is now 2.5rem.")).toBeVisible();
+  await list.getByRole("button", { name: "Delete" }).click();
+  await list.getByRole("button", { name: "Delete?" }).click();
+  await expect(list.getByText("No comments yet.", { exact: false })).toBeVisible();
 });
 
 test("the page's own layout is not shifted by the bar", async () => {

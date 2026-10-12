@@ -38,6 +38,7 @@ const preview = (name: string): Preview => ({
   url: `https://glim.example.com/${name}/`,
   views: 0,
   lastSeen: null,
+  comments: 0,
 });
 
 const snap = (previews: Preview[]): Snapshot => ({

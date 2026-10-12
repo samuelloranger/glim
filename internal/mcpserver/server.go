@@ -47,6 +47,7 @@ type PreviewInfo struct {
 	Views    int64  `json:"views" jsonschema:"how many times the link was opened in a browser (bots, the owner and dashboard thumbnails excluded)"`
 	Locked   bool   `json:"locked,omitempty" jsonschema:"true when the preview is password-protected"`
 	LastSeen string `json:"lastSeen,omitempty" jsonschema:"RFC3339 time of the latest open; omitted if never opened"`
+	Comments int    `json:"comments,omitempty" jsonschema:"open comments the user left from the glim bar; read them with the comments tool"`
 }
 
 type ListOutput struct {
@@ -61,8 +62,9 @@ type RevokeOutput struct {
 	Revoked string `json:"revoked" jsonschema:"the revoked preview slug"`
 }
 
-// listPreviews lists live previews; stats (may be nil) supplies view counts.
-func listPreviews(s *store.Store, in ListInput, stats map[string]auth.ViewStat) (ListOutput, error) {
+// listPreviews lists live previews; stats and comments (either may be nil)
+// supply view counts and open comment counts.
+func listPreviews(s *store.Store, in ListInput, stats map[string]auth.ViewStat, comments map[string]int) (ListOutput, error) {
 	manifests, err := s.List()
 	if err != nil {
 		return ListOutput{}, err
@@ -73,12 +75,13 @@ func listPreviews(s *store.Store, in ListInput, stats map[string]auth.ViewStat) 
 			continue
 		}
 		info := PreviewInfo{
-			Name:    m.Name,
-			URL:     s.URL(m.Name),
-			Title:   m.Title,
-			Project: m.Project,
-			Pinned:  m.Pinned,
-			Locked:  m.Locked(),
+			Name:     m.Name,
+			URL:      s.URL(m.Name),
+			Title:    m.Title,
+			Project:  m.Project,
+			Pinned:   m.Pinned,
+			Locked:   m.Locked(),
+			Comments: comments[m.Name],
 		}
 		if !m.Pinned {
 			info.Expires = m.Expires.Format(time.RFC3339)
@@ -95,7 +98,7 @@ func listPreviews(s *store.Store, in ListInput, stats map[string]auth.ViewStat) 
 // ListPreviews returns the live previews exactly as the MCP list tool does,
 // so the CLI's `ls --json` shares its field names and omission rules.
 func ListPreviews(s *store.Store, project string, stats map[string]auth.ViewStat) (ListOutput, error) {
-	return listPreviews(s, ListInput{Project: project}, stats)
+	return listPreviews(s, ListInput{Project: project}, stats, nil)
 }
 
 // NewPresentOutput converts a publish result to the shape the MCP present tool
@@ -348,14 +351,15 @@ func selfFetchClause(selfFetch bool) string {
 // before each present to make sure the links it returns load, returning the
 // base URL to use; when it fails the preview is still published, with a
 // warning in the result. selfFetch says whether the server lets preview pages
-// fetch their own files, which present's description reports.
-func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string, views func() map[string]auth.ViewStat, ensureBase func() (string, error), selfFetch bool) error {
+// fetch their own files, which present's description reports. comments (may
+// be nil) holds the comments left from the glim bar.
+func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version string, views func() map[string]auth.ViewStat, ensureBase func() (string, error), selfFetch bool, comments CommentStore) error {
 	server := mcp.NewServer(&mcp.Implementation{Name: "glim", Version: version}, nil)
 
 	// mu guards s.BaseURL, which a present may update while list reads it.
 	var mu sync.Mutex
 
-	present := func(_ context.Context, _ *mcp.CallToolRequest, in PresentInput) (*mcp.CallToolResult, PresentOutput, error) {
+	present := func(ctx context.Context, _ *mcp.CallToolRequest, in PresentInput) (*mcp.CallToolResult, PresentOutput, error) {
 		res, warning, err := presentPreview(s, &mu, defaultTTL, ensureBase, in)
 		if err != nil {
 			return nil, PresentOutput{}, err
@@ -364,6 +368,9 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 		text := "Preview published. Give the user this link: " + res.URL + "\n" + presentSummary(res)
 		if warning != "" {
 			text += "\n" + warning
+		}
+		if n := openCommentCounts(ctx, comments)[res.Name]; n > 0 {
+			text += fmt.Sprintf("\nThis preview has %d open comment(s) from the user: read them with the comments tool, and resolve the ones this update handles with resolve_comment.", n)
 		}
 		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
 		return result, out, nil
@@ -382,13 +389,14 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 		},
 	}, present)
 
-	list := func(_ context.Context, _ *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, ListOutput, error) {
+	list := func(ctx context.Context, _ *mcp.CallToolRequest, in ListInput) (*mcp.CallToolResult, ListOutput, error) {
 		var stats map[string]auth.ViewStat
 		if views != nil {
 			stats = views()
 		}
+		counts := openCommentCounts(ctx, comments)
 		mu.Lock()
-		out, err := listPreviews(s, in, stats)
+		out, err := listPreviews(s, in, stats, counts)
 		mu.Unlock()
 		if err != nil {
 			return nil, ListOutput{}, err
@@ -405,6 +413,9 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 				text += fmt.Sprintf(" (opened %d×, last %s)", p.Views, p.LastSeen)
 			} else {
 				text += " (not opened yet)"
+			}
+			if p.Comments > 0 {
+				text += fmt.Sprintf(" (%d open comment(s))", p.Comments)
 			}
 		}
 		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
@@ -523,7 +534,8 @@ func Run(ctx context.Context, s *store.Store, defaultTTL time.Duration, version 
 		},
 	}, extend)
 
-	registerGet(server, s, &mu, views)
+	registerGet(server, s, &mu, views, comments)
+	registerComments(server, s, &mu, comments)
 
 	return server.Run(ctx, &mcp.StdioTransport{})
 }

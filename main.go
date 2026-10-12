@@ -546,7 +546,7 @@ func cmdMCP() error {
 		// else starts, so bring it up on demand like `glim --local` does.
 		ensureBase = func() (string, error) { return ensureLocalServer(cfg) }
 	}
-	return mcpserver.Run(context.Background(), s, cfg.TTLDuration(), version, viewStatsNow, ensureBase, cfg.SelfFetchEnabled())
+	return mcpserver.Run(context.Background(), s, cfg.TTLDuration(), version, viewStatsNow, ensureBase, cfg.SelfFetchEnabled(), dbComments{})
 }
 
 func cmdServe(args []string) error {
@@ -589,6 +589,9 @@ func cmdServe(args []string) error {
 		if err := db.DeleteViews(ctx, name); err != nil {
 			log.Printf("views: forget %s: %v", name, err)
 		}
+		if err := db.DeleteComments(ctx, name); err != nil {
+			log.Printf("comments: forget %s: %v", name, err)
+		}
 	}
 	hub := api.NewHub(st, db, 2*time.Second, log.Printf)
 	if _, _, err := db.VAPIDKeys(ctx); err != nil {
@@ -611,7 +614,7 @@ func cmdServe(args []string) error {
 		LiveReload:  cfg.LiveReloadEnabled(),
 		NoSelfFetch: !cfg.SelfFetchEnabled(),
 		NoHeader:    !cfg.HeaderEnabled(),
-		Views:       &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken},
+		Views:       &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken, BarToken: db.BarToken},
 		Unlock: &serve.Unlock{Token: db.UnlockToken, Limiter: auth.NewLimiter(nil),
 			Secure: strings.HasPrefix(base, "https://")}})
 }
@@ -959,11 +962,51 @@ func viewStatsNow() map[string]auth.ViewStat {
 	return stats
 }
 
-// forgetViews drops a removed or expired preview's view stats, if a DB exists.
+// dbComments reaches the comments in the dashboard database, opening it for
+// each call (like viewStatsNow) so a long-running glim mcp never holds it, and
+// never creates it.
+type dbComments struct{}
+
+func (dbComments) with(f func(*auth.DB) error) error {
+	db := openExistingDB()
+	if db == nil {
+		return fmt.Errorf("comments are stored in the dashboard database, which does not exist yet: run glim serve and create the dashboard account first")
+	}
+	defer db.Close()
+	return f(db)
+}
+
+func (c dbComments) Comments(ctx context.Context, preview string, includeResolved bool) (out []auth.Comment, err error) {
+	err = c.with(func(db *auth.DB) error {
+		out, err = db.Comments(ctx, preview, includeResolved)
+		return err
+	})
+	return out, err
+}
+
+func (c dbComments) ResolveComment(ctx context.Context, preview string, id int64, resolved bool, reply *string) (out auth.Comment, err error) {
+	err = c.with(func(db *auth.DB) error {
+		out, err = db.ResolveComment(ctx, preview, id, resolved, reply)
+		return err
+	})
+	return out, err
+}
+
+func (c dbComments) OpenCommentCounts(ctx context.Context) (out map[string]int, err error) {
+	err = c.with(func(db *auth.DB) error {
+		out, err = db.OpenCommentCounts(ctx)
+		return err
+	})
+	return out, err
+}
+
+// forgetViews drops a removed or expired preview's view stats and comments,
+// if a DB exists.
 func forgetViews(name string) {
 	if db := openExistingDB(); db != nil {
 		defer db.Close()
 		_ = db.DeleteViews(context.Background(), name)
+		_ = db.DeleteComments(context.Background(), name)
 	}
 }
 

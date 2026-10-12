@@ -273,3 +273,20 @@ func TestOwnerBarCarriesTheLinkAsAQRCode(t *testing.T) {
 		t.Fatal("bar data lacks the QR code of the preview's link")
 	}
 }
+
+func TestOwnerBarCarriesACommentTokenForThisPreview(t *testing.T) {
+	e := newBarEnv(t)
+	e.opts.Views.BarToken = e.db.BarToken
+	e.publish(t, "T", false, map[string]string{"index.html": barPage})
+	body := e.do("/"+e.slug+"/", nil, e.owner).Body.String()
+	tok := e.db.BarToken(e.owner.Value, e.slug)
+	if tok == "" || !strings.Contains(body, `"tok":"`+tok+`"`) ||
+		!strings.Contains(body, `"api":"https://glim.example.com/_glim/api/bar/`+e.slug+`/comments"`) {
+		t.Fatalf("bar lacks the comment endpoint or token: %s", body)
+	}
+	// Without a minting function the bar has no comment data at all.
+	e.opts.Views.BarToken = nil
+	if body := e.do("/"+e.slug+"/", nil, e.owner).Body.String(); strings.Contains(body, `"tok":`) || strings.Contains(body, `"api":`) {
+		t.Fatal("comment data present with comments off")
+	}
+}

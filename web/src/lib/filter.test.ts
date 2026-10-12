@@ -12,6 +12,7 @@ const p = (over: Partial<Preview>): Preview => ({
   locked: false,
   views: 0,
   lastSeen: null,
+  comments: 0,
   url: "https://glim.example.com/diff-review-a1b2/",
   ...over,
 });

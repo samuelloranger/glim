@@ -38,7 +38,9 @@ func (s *Server) respondPreview(w http.ResponseWriter, name string) {
 		return
 	}
 	s.poke()
-	writeJSON(w, http.StatusOK, toPreview(s.d.Store, m, viewStats(s.d.Auth)[name]))
+	p := toPreview(s.d.Store, m, viewStats(s.d.Auth)[name])
+	p.Comments = openComments(s.d.Auth)[name]
+	writeJSON(w, http.StatusOK, p)
 }
 
 func (s *Server) postExtend(w http.ResponseWriter, r *http.Request, _ auth.Session) {

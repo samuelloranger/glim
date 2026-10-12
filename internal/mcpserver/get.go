@@ -41,6 +41,7 @@ type GetOutput struct {
 	Views    int64  `json:"views" jsonschema:"how many times the link was opened in a browser"`
 	LastSeen string `json:"lastSeen,omitempty" jsonschema:"RFC3339 time of the latest open; omitted if never opened"`
 	Created  string `json:"created" jsonschema:"RFC3339 time of the latest publish"`
+	Comments int    `json:"comments,omitempty" jsonschema:"open comments the user left from the glim bar; read them with the comments tool"`
 
 	SourceFile     string   `json:"sourceFile,omitempty" jsonschema:"with include_source: the file the source was read from, relative to the preview"`
 	SourceSize     int64    `json:"sourceSize,omitempty" jsonschema:"with include_source: size in bytes of that file"`
@@ -179,6 +180,9 @@ func getText(o GetOutput) string {
 		text += " · locked"
 	}
 	text += fmt.Sprintf(" · opened %d×", o.Views)
+	if o.Comments > 0 {
+		text += fmt.Sprintf(" · %d open comment(s)", o.Comments)
+	}
 	if o.SourceFile != "" {
 		text += "\nsource: " + o.SourceFile
 		switch {
@@ -199,18 +203,20 @@ func getText(o GetOutput) string {
 	return text
 }
 
-func registerGet(server *mcp.Server, s *store.Store, mu *sync.Mutex, views func() map[string]auth.ViewStat) {
-	get := func(_ context.Context, _ *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, GetOutput, error) {
+func registerGet(server *mcp.Server, s *store.Store, mu *sync.Mutex, views func() map[string]auth.ViewStat, comments CommentStore) {
+	get := func(ctx context.Context, _ *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, GetOutput, error) {
 		var stats map[string]auth.ViewStat
 		if views != nil {
 			stats = views()
 		}
+		counts := openCommentCounts(ctx, comments)
 		mu.Lock()
 		out, err := getPreview(s, in, stats)
 		mu.Unlock()
 		if err != nil {
 			return nil, GetOutput{}, err
 		}
+		out.Comments = counts[out.Name]
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: getText(out)}}}, out, nil
 	}
 	mcp.AddTool(server, &mcp.Tool{

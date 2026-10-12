@@ -483,6 +483,15 @@ select {
   font-size: var(--step--1);
 }
 
+.chip.comments {
+  grid-column: 1 / -1;
+  justify-self: start;
+  background: var(--iris);
+  color: var(--iris-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

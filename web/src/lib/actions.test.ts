@@ -24,6 +24,7 @@ const base: Preview = {
   locked: false,
   views: 0,
   lastSeen: null,
+  comments: 0,
   url: "https://glim.example.com/diff-a1b2/",
 };
 

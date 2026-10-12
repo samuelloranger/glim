@@ -125,20 +125,27 @@ func (db *DB) IsOwnerToken(v string) bool {
 	if !hmac.Equal([]byte(parts[2]), []byte(ownerMAC(key, parts[0]+"."+parts[1]))) {
 		return false
 	}
-	uid, err := strconv.ParseInt(parts[0], 10, 64)
+	_, ok := db.liveSessionUser(parts[0], parts[1])
+	return ok
+}
+
+// liveSessionUser checks that uid (decimal) has the unexpired session whose
+// token hash is sid (hex), and returns the user id.
+func (db *DB) liveSessionUser(uid, sid string) (int64, bool) {
+	id, err := strconv.ParseInt(uid, 10, 64)
 	if err != nil {
-		return false
+		return 0, false
 	}
-	th, err := hex.DecodeString(parts[1])
+	th, err := hex.DecodeString(sid)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	var one int
 	err = db.sql.QueryRowContext(context.Background(), `
 		SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.user_id = ? AND s.expires_at > ?`,
-		th, uid, db.now().Unix()).Scan(&one)
-	return err == nil
+		th, id, db.now().Unix()).Scan(&one)
+	return id, err == nil
 }
 
 // UnlockToken is the value of a preview's unlock cookie: an HMAC under the
