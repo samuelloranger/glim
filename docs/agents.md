@@ -116,6 +116,16 @@ So the agent should ship a self-contained page, wrap any storage call in
 `try/catch`, and keep data inline. The steering rule, the skill and the
 `present` tool description all say this.
 
+## Phone-sized pages
+
+Previews are often opened on a phone, so the steering rule, the skill and the
+`present` description also ask for a page that reads well at 375px wide:
+fluid widths rather than fixed pixel widths, grids and flex rows that stack to
+one column, long paths, URLs and code that wrap (`overflow-wrap: anywhere`),
+and wide tables, code blocks and diagrams in their own `overflow-x: auto`
+container so the page never scrolls sideways. glim adds a viewport tag to any
+page that lacks one (see [link preview cards](/serving#link-preview-cards)).
+
 ## The get tool
 
 ```

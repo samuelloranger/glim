@@ -51,6 +51,12 @@ a fixed card served at `/_glim/og.png`. A tag the page already declares is never
 overridden or duplicated. Larger and non-HTML files are streamed unchanged, and
 `HEAD` and `Range` requests keep working.
 
+The same step adds `<meta name="viewport" content="width=device-width,
+initial-scale=1">` to a page that declares no viewport. Without it, a phone
+lays the page out at a desktop width and shrinks it to fit, which is what a
+page written without its own `<head>` would get. A page that sets its own
+viewport keeps it.
+
 ## Live reload
 
 Republishing a preview under the same name (`glim <file> --name X`, or an agent
