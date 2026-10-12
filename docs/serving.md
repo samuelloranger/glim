@@ -52,10 +52,11 @@ overridden or duplicated. Larger and non-HTML files are streamed unchanged, and
 `HEAD` and `Range` requests keep working.
 
 The same step adds `<meta name="viewport" content="width=device-width,
-initial-scale=1">` to a page that declares no viewport. Without it, a phone
-lays the page out at a desktop width and shrinks it to fit, which is what a
-page written without its own `<head>` would get. A page that sets its own
-viewport keeps it.
+initial-scale=1">` to any page that declares no viewport, with or without its
+own `<head>`. Without it, a phone lays the page out at a desktop width and
+shrinks it to fit. A page that sets its own viewport keeps it, so a page built
+for a fixed desktop width should declare one (for example `width=1200`) to keep
+the zoomed-out layout.
 
 ## Live reload
 

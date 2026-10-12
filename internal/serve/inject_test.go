@@ -205,4 +205,13 @@ func TestPreviewViewportTag(t *testing.T) {
 	if body := get(t, h, "/vp-1234/own.html").Body.String(); strings.Contains(body, want) {
 		t.Errorf("page's own viewport was duplicated: %s", body)
 	}
+	md := store.New(t.TempDir(), "https://glim.example.com")
+	src := filepath.Join(t.TempDir(), "notes.md")
+	writeFile(t, filepath.Dir(src), "notes.md", "# Notes\n\nhi\n")
+	if _, err := md.Publish(src, "", "", "", time.Hour, "md-1234"); err != nil {
+		t.Fatal(err)
+	}
+	if body := get(t, PreviewHandler(md), "/md-1234/").Body.String(); strings.Count(body, `name="viewport"`) != 1 {
+		t.Errorf("converted page should keep exactly one viewport: %s", body)
+	}
 }
