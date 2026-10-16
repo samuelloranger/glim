@@ -20,6 +20,22 @@ type Script struct {
 	Language  string `json:"language"`
 	Summary   string `json:"summary"`
 	Narration string `json:"narration"`
+	// Truncated is set when the reply hit the output limit, so the end of
+	// the narration is missing.
+	Truncated bool `json:"-"`
+}
+
+// DefaultMaxTokens is the output limit asked for when none is configured;
+// most providers allow at least this much.
+const DefaultMaxTokens = 4096
+
+// wordBudget is the narration length that fits in maxTokens, leaving room
+// for the summary and the JSON around it (about 1.5 tokens per word).
+func wordBudget(maxTokens int) int {
+	if maxTokens <= 0 {
+		maxTokens = DefaultMaxTokens
+	}
+	return max(150, min(1500, (maxTokens-600)*2/3))
 }
 
 // Endpoint is an OpenAI-compatible API: URL is its base (ending in /v1 or
@@ -44,22 +60,35 @@ The narration:
 - reads each heading as a short spoken line that leads into the text under it, and keeps every point, fact, number, step and conclusion.
 - is plain spoken sentences: a list becomes sentences, a table becomes its important rows said in words, and symbols, units, abbreviations and links are said the way a person reads them aloud.
 - gives each picture, chart, diagram or interface mockup a sentence or two, at the place it appears, for what it adds to the text: what a chart measures, its trend and its key values; what a mockup or photo shows.
-- covers the page's body, from its first heading to its last word.`
+- covers the page's body, from its first heading to its last word, as a condensed reading: about a third of the page's length and at most %d words. Keep the page's voice, its order, its headings and every key point, number and conclusion; tighten examples, repetition and detail.`
 
-// Describe asks the model at e for the summary and narration of p. Some
-// providers reject JSON mode or images; on a 4xx it retries without JSON
-// mode, then without the images, so a text-only model still works.
-func Describe(ctx context.Context, client *http.Client, e Endpoint, p Page, instructions string) (Script, error) {
-	type attempt struct{ json, images bool }
-	attempts := []attempt{{true, true}, {false, true}}
+// Describe asks the model at e for the summary and narration of p, within
+// maxTokens of output (0 selects DefaultMaxTokens). Providers differ in what
+// they accept, so on a 4xx it retries: with max_tokens instead of
+// max_completion_tokens, then without JSON mode, without a token limit, and
+// last without the images, so a text-only model still works.
+func Describe(ctx context.Context, client *http.Client, e Endpoint, p Page, instructions string, maxTokens int) (Script, error) {
+	if maxTokens <= 0 {
+		maxTokens = DefaultMaxTokens
+	}
+	attempts := []attempt{
+		{json: true, images: true, limit: "max_completion_tokens"},
+		{json: true, images: true, limit: "max_tokens"},
+		{json: false, images: true, limit: "max_tokens"},
+		{json: false, images: true},
+	}
 	if len(p.Images) > 0 {
-		attempts = append(attempts, attempt{false, false})
+		attempts = append(attempts, attempt{})
 	}
 	var lastErr error
 	for _, a := range attempts {
-		content, err := chat(ctx, client, e, request(e.Model, p, instructions, a.json, a.images))
+		content, finish, err := chat(ctx, client, e, request(e.Model, p, instructions, maxTokens, a))
 		if err == nil {
-			return parseScript(content)
+			sc, err := parseScript(content)
+			if finish == "length" {
+				sc, err = partialScript(content), nil
+			}
+			return sc, err
 		}
 		lastErr = err
 		var he *httpError
@@ -68,6 +97,13 @@ func Describe(ctx context.Context, client *http.Client, e Endpoint, p Page, inst
 		}
 	}
 	return Script{}, lastErr
+}
+
+// attempt is one shape of the request: JSON mode, the images, and which
+// field (if any) carries the output limit.
+type attempt struct {
+	json, images bool
+	limit        string
 }
 
 type chatMessage struct {
@@ -86,16 +122,18 @@ type imageURL struct {
 }
 
 type chatRequest struct {
-	Model          string        `json:"model"`
-	Messages       []chatMessage `json:"messages"`
-	Temperature    float64       `json:"temperature"`
-	ResponseFormat *struct {
+	Model               string        `json:"model"`
+	Messages            []chatMessage `json:"messages"`
+	Temperature         float64       `json:"temperature"`
+	MaxCompletionTokens int           `json:"max_completion_tokens,omitempty"`
+	MaxTokens           int           `json:"max_tokens,omitempty"`
+	ResponseFormat      *struct {
 		Type string `json:"type"`
 	} `json:"response_format,omitempty"`
 }
 
-func request(model string, p Page, instructions string, jsonMode, images bool) chatRequest {
-	sys := systemPrompt
+func request(model string, p Page, instructions string, maxTokens int, a attempt) chatRequest {
+	sys := fmt.Sprintf(systemPrompt, wordBudget(maxTokens))
 	if s := strings.TrimSpace(instructions); s != "" {
 		sys += "\n\nAlso: " + s
 	}
@@ -112,7 +150,7 @@ func request(model string, p Page, instructions string, jsonMode, images bool) c
 		intro.WriteString("The page has no readable text; describe it from the pictures.")
 	}
 	parts := []contentPart{{Type: "text", Text: intro.String()}}
-	if images {
+	if a.images {
 		for _, img := range p.Images {
 			parts = append(parts,
 				contentPart{Type: "text", Text: img.Label + ":"},
@@ -129,10 +167,16 @@ func request(model string, p Page, instructions string, jsonMode, images bool) c
 			{Role: "user", Content: parts},
 		},
 	}
-	if jsonMode {
+	if a.json {
 		r.ResponseFormat = &struct {
 			Type string `json:"type"`
 		}{"json_object"}
+	}
+	switch a.limit {
+	case "max_completion_tokens":
+		r.MaxCompletionTokens = maxTokens
+	case "max_tokens":
+		r.MaxTokens = maxTokens
 	}
 	return r
 }
@@ -144,21 +188,30 @@ type httpError struct {
 
 func (e *httpError) Error() string { return e.msg }
 
-func chat(ctx context.Context, client *http.Client, e Endpoint, body chatRequest) (string, error) {
+// chatLog, when set, receives each reply's finish reason and token counts.
+var chatLog func(format string, args ...any)
+
+func chat(ctx context.Context, client *http.Client, e Endpoint, body chatRequest) (content, finish string, err error) {
 	var out struct {
 		Choices []struct {
-			Message struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage json.RawMessage `json:"usage"`
 	}
 	if err := postJSON(ctx, client, e, "/chat/completions", body, &out); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
-		return "", errors.New("The model returned an empty answer")
+		return "", "", errors.New("The model returned an empty answer")
 	}
-	return out.Choices[0].Message.Content, nil
+	c := out.Choices[0]
+	if chatLog != nil {
+		chatLog("listen: model finished with %q, %d chars, usage %s", c.FinishReason, len(c.Message.Content), out.Usage)
+	}
+	return c.Message.Content, c.FinishReason, nil
 }
 
 // postJSON posts body to e.URL+path and decodes a 2xx JSON reply into out
@@ -296,6 +349,67 @@ func decodeScript(b []byte) (Script, bool) {
 		sc.Summary = firstSentences(sc.Narration, 3)
 	}
 	return sc, true
+}
+
+// partialScript salvages a reply cut off by the output limit: the complete
+// fields it has, and the narration up to where it stopped, ended at its last
+// full sentence. It never returns the raw JSON as the narration.
+func partialScript(content string) Script {
+	sc := Script{Truncated: true}
+	if full, err := parseScript(content); err == nil && !strings.HasPrefix(strings.TrimSpace(full.Narration), "{") &&
+		!strings.HasPrefix(strings.TrimSpace(full.Narration), "[") {
+		full.Truncated = true
+		return full
+	}
+	sc.Language, _ = jsonField(content, "language")
+	sc.Summary, _ = jsonField(content, "summary")
+	sc.Narration, _ = jsonField(content, "narration")
+	if cut := lastSentenceEnd(sc.Narration); cut > 0 {
+		sc.Narration = sc.Narration[:cut]
+	}
+	if sc.Summary == "" {
+		sc.Summary = firstSentences(sc.Narration, 3)
+	}
+	return sc
+}
+
+// jsonField reads the string value of key from possibly unfinished JSON; ok
+// is false when the value is cut off before its closing quote.
+func jsonField(s, key string) (string, bool) {
+	i := strings.Index(s, `"`+key+`"`)
+	if i < 0 {
+		return "", false
+	}
+	rest := s[i+len(key)+2:]
+	j := strings.Index(rest, `"`)
+	if j < 0 || strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rest[:j]), ":")) != "" {
+		return "", false
+	}
+	rest = rest[j+1:]
+	end, closed := len(rest), false
+	for k := 0; k < len(rest); k++ {
+		if rest[k] == '\\' {
+			k++
+			continue
+		}
+		if rest[k] == '"' {
+			end, closed = k, true
+			break
+		}
+	}
+	raw := rest[:end]
+	if !closed && (len(raw)-len(strings.TrimRight(raw, `\`)))%2 == 1 {
+		raw = raw[:len(raw)-1] // a cut-off escape sequence
+	}
+	var v string
+	if json.Unmarshal(escapeControls([]byte(`"`+raw+`"`)), &v) != nil {
+		return strings.TrimSpace(raw), closed
+	}
+	return strings.TrimSpace(v), closed
+}
+
+func lastSentenceEnd(s string) int {
+	return strings.LastIndexAny(s, ".!?") + 1
 }
 
 // escapeControls escapes raw control characters inside JSON string literals,

@@ -43,6 +43,8 @@ export type ListenResult = {
   /** False when the page was read from its HTML, without screenshots. */
   rendered: boolean;
   pictures: number;
+  /** The model's reply hit its output limit: the narration ends early. */
+  truncated?: boolean;
 };
 
 export type ListenStep = "queued" | "page" | "script" | "audio";

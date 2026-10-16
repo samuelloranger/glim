@@ -96,6 +96,8 @@ audio version: **Make the audio version** starts it and shows each step
 (reading the page, writing the narration, recording the audio, part by part).
 You can close the panel or dialog; it keeps going on the server.
 
+The narration is the page itself read aloud, condensed to about a third of its
+length, with short descriptions of its pictures and charts where they appear.
 When it's ready you get a player with 1×, 1.25×, 1.5× and 2× speeds, a short
 summary, the length, when it was made and which model wrote it, and the full
 transcript. **Make it again** writes a new one; after a republish, **Update**

@@ -45,6 +45,9 @@ type Listen struct {
 	// https://api.example.com/v1; glim calls LLMURL/chat/completions.
 	LLMURL   string `json:"llm_url,omitempty"`
 	LLMModel string `json:"llm_model,omitempty"`
+	// LLMMaxTokens caps the model's output, and so the narration's length;
+	// 0 selects listen.DefaultMaxTokens. Keep it within the model's limit.
+	LLMMaxTokens int `json:"llm_max_tokens,omitempty"`
 	// LLMKey is filled from GLIM_LLM_API_KEY and never saved.
 	LLMKey string `json:"-"`
 	// TTSURL is the base of an OpenAI-compatible speech API; glim calls
@@ -175,6 +178,11 @@ func listenEnv(l *Listen) {
 	} {
 		if v := os.Getenv(env); v != "" {
 			*dst = v
+		}
+	}
+	if v := os.Getenv("GLIM_LLM_MAX_TOKENS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			l.LLMMaxTokens = n
 		}
 	}
 }

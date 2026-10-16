@@ -41,7 +41,7 @@ server that does works: glim calls `<llm_url>/chat/completions` and
 `<tts_url>/audio/speech`.
 
 ```sh
-glim config --llm-url https://api.example.com/v1 --llm-model some-vision-model
+glim config --llm-url https://api.example.com/v1 --llm-model some-vision-model --llm-max-tokens 4096
 glim config --tts-url http://127.0.0.1:8880/v1 --tts-model some-tts-model \
   --tts-voice voice-a --tts-voices fr=voice-b,es=voice-c
 ```
@@ -50,6 +50,7 @@ glim config --tts-url http://127.0.0.1:8880/v1 --tts-model some-tts-model \
 | --- | --- | --- |
 | `listen.llm_url` | _(none)_ | Base URL of an OpenAI-compatible API, ending where `/chat/completions` goes (usually `/v1`). Listen is off without it. |
 | `listen.llm_model` | _(none)_ | Model that describes the page. Use one that accepts images; a text-only model still works from the page text. |
+| `listen.llm_max_tokens` | `4096` | The model's output limit, sent as `max_completion_tokens` (or `max_tokens` if the provider refuses that). The narration is a condensed reading of about a third of the page, and its word budget follows from this limit (at most 1500 words). Keep it within your model's limit; a reply that still hits it is kept up to its last full sentence and marked as cut off. |
 | `listen.tts_url` | _(none)_ | Base URL of an OpenAI-compatible speech API. Without it glim writes the narration only, and the bar and the dashboard offer **Read aloud** with the device's own voice. |
 | `listen.tts_model` | _(none)_ | Speech model. |
 | `listen.tts_voice` | _(none)_ | Default voice. Omitted from the request when unset. |
@@ -61,7 +62,7 @@ API keys are never stored in the config file. Set `GLIM_LLM_API_KEY` and
 `GLIM_TTS_API_KEY` in the environment of `glim serve` (for the systemd unit,
 an `Environment=` line or an `EnvironmentFile=` readable only by you). Every
 other key can also be set from the environment: `GLIM_LLM_URL`,
-`GLIM_LLM_MODEL`, `GLIM_TTS_URL`, `GLIM_TTS_MODEL`, `GLIM_TTS_VOICE`,
+`GLIM_LLM_MODEL`, `GLIM_LLM_MAX_TOKENS`, `GLIM_TTS_URL`, `GLIM_TTS_MODEL`, `GLIM_TTS_VOICE`,
 `GLIM_CHROME` and `GLIM_LISTEN_INSTRUCTIONS`.
 
 `glim config` shows whether Listen is on, which endpoints it uses, whether each

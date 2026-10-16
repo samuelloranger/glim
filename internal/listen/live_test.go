@@ -35,6 +35,7 @@ func TestLiveProviders(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(st, set, t.Logf)
+	chatLog = t.Logf
 	start := time.Now()
 	if _, err := s.Start(res.Name, false); err != nil {
 		t.Fatal(err)

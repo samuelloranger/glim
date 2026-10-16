@@ -868,6 +868,7 @@ try {
       ac3.appendChild(button(speaking ? "Stop" : "Read aloud", "pr", function (b) { speak(r, b); }));
       p.appendChild(ac3);
     }
+    if (r.truncated) p.appendChild(el("div", "mu", "The model stopped before the end of the page, so the audio ends early."));
     p.appendChild(el("div", "sum", r.summary));
     var meta = [];
     if (r.seconds) meta.push(mins(r.seconds));

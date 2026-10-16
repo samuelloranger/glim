@@ -129,13 +129,18 @@ func fakeLLM(t *testing.T, reject ...string) (*httptest.Server, *[]map[string]an
 
 func TestDescribeFallsBack(t *testing.T) {
 	p := Page{Title: "T", Text: "Body", Images: []Image{{Label: "Screenshot", MIME: "image/jpeg", Data: []byte{1}}}}
-	srv, seen := fakeLLM(t, "json_object", "image_url")
-	sc, err := Describe(context.Background(), srv.Client(), Endpoint{URL: srv.URL + "/v1/", Model: "m", Key: "k"}, p, "Be brief.")
+	srv, seen := fakeLLM(t, "json_object", "image_url", "max_completion_tokens")
+	sc, err := Describe(context.Background(), srv.Client(), Endpoint{URL: srv.URL + "/v1/", Model: "m", Key: "k"}, p, "Be brief.", 0)
 	if err != nil || sc.Narration != "This page is a report." {
 		t.Fatalf("%+v %v", sc, err)
 	}
-	if len(*seen) != 3 {
-		t.Fatalf("%d attempts, want 3 (json+images, images, text only)", len(*seen))
+	// max_completion_tokens, then max_tokens, then without JSON mode, without
+	// a limit, and last without the images.
+	if len(*seen) != 5 {
+		t.Fatalf("%d attempts, want 5", len(*seen))
+	}
+	if (*seen)[0]["max_completion_tokens"] != float64(DefaultMaxTokens) || (*seen)[1]["max_tokens"] != float64(DefaultMaxTokens) {
+		t.Fatalf("limits sent: %v / %v", (*seen)[0]["max_completion_tokens"], (*seen)[1]["max_tokens"])
 	}
 	sys := (*seen)[0]["messages"].([]any)[0].(map[string]any)["content"].(string)
 	if !strings.Contains(sys, "Also: Be brief.") {
@@ -143,9 +148,33 @@ func TestDescribeFallsBack(t *testing.T) {
 	}
 }
 
+func TestPartialScript(t *testing.T) {
+	cut := "{\"language\": \"en\",\n \"summary\": \"Short sum.\",\n \"narration\": \"Goal. Move every screen. Finding F10: the button is unla"
+	sc := partialScript(cut)
+	if !sc.Truncated || sc.Language != "en" || sc.Summary != "Short sum." || sc.Narration != "Goal. Move every screen." {
+		t.Fatalf("%+v", sc)
+	}
+	// Cut inside an escape sequence.
+	sc = partialScript(`{"narration": "One. Two \`)
+	if sc.Narration != "One." {
+		t.Fatalf("dangling escape: %+v", sc)
+	}
+	// A reply that parses but hit the limit anyway is only flagged.
+	sc = partialScript(`{"summary": "S.", "narration": "All of it."}`)
+	if !sc.Truncated || sc.Narration != "All of it." {
+		t.Fatalf("complete: %+v", sc)
+	}
+	if b := wordBudget(4096); b < 1500 || b > 1500 {
+		t.Fatalf("budget(4096) = %d", b)
+	}
+	if b := wordBudget(2048); b != 965 {
+		t.Fatalf("budget(2048) = %d", b)
+	}
+}
+
 func TestDescribeStopsOnAuthError(t *testing.T) {
 	srv, seen := fakeLLM(t)
-	_, err := Describe(context.Background(), srv.Client(), Endpoint{URL: srv.URL + "/v1", Model: "m", Key: "wrong"}, Page{Text: "x"}, "")
+	_, err := Describe(context.Background(), srv.Client(), Endpoint{URL: srv.URL + "/v1", Model: "m", Key: "wrong"}, Page{Text: "x"}, "", 0)
 	if err == nil || !strings.Contains(err.Error(), "404") || len(*seen) != 0 {
 		t.Fatalf("err %v, %d attempts", err, len(*seen))
 	}

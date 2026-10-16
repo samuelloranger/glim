@@ -241,6 +241,11 @@ export function ListenDialog(props: {
                           {speaking() ? "Stop" : "Read aloud"}
                         </button>
                       </Show>
+                      <Show when={r().truncated}>
+                        <p class="help">
+                          The model stopped before the end of the page, so the audio ends early.
+                        </p>
+                      </Show>
                       <p class="listen-summary">{r().summary}</p>
                       <p class="help">{meta(r())}</p>
                       <details class="listen-transcript">

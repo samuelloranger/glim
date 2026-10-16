@@ -632,6 +632,7 @@ func newListen(l config.Listen, st *store.Store) *listen.Service {
 		Voice:        l.TTSVoice,
 		Voices:       l.TTSVoices,
 		Instructions: l.Instructions,
+		MaxTokens:    l.LLMMaxTokens,
 	}
 	if l.Enabled() {
 		set.Chrome = listen.FindChrome(l.Chrome)
@@ -680,6 +681,7 @@ func cmdConfig(args []string) error {
 	selfFetch := fs.String("self-fetch", "", "let preview pages fetch their own files (true or false)")
 	llmURL := fs.String("llm-url", "", "Listen: base URL of an OpenAI-compatible API that describes pages (key from GLIM_LLM_API_KEY)")
 	llmModel := fs.String("llm-model", "", "Listen: vision model that describes pages")
+	llmMax := fs.Int("llm-max-tokens", 0, "Listen: the model's output limit, which sets the narration's length (default 4096)")
 	ttsURL := fs.String("tts-url", "", "Listen: base URL of an OpenAI-compatible speech API (key from GLIM_TTS_API_KEY)")
 	ttsModel := fs.String("tts-model", "", "Listen: speech model")
 	ttsVoice := fs.String("tts-voice", "", "Listen: default voice")
@@ -750,6 +752,9 @@ func cmdConfig(args []string) error {
 			*dst = strings.TrimSpace(*flag)
 		}
 	}
+	if *llmMax > 0 {
+		cfg.Listen.LLMMaxTokens = *llmMax
+	}
 	if *ttsVoices != "" {
 		voices, err := parseVoices(*ttsVoices)
 		if err != nil {
@@ -777,6 +782,11 @@ func printListen(l config.Listen) {
 	}
 	fmt.Printf("listen:      on\n")
 	fmt.Printf("  llm:       %s at %s (GLIM_LLM_API_KEY %s)\n", l.LLMModel, listen.Redact(l.LLMURL), set(l.LLMKey))
+	maxTok := l.LLMMaxTokens
+	if maxTok <= 0 {
+		maxTok = listen.DefaultMaxTokens
+	}
+	fmt.Printf("  output:    up to %d tokens\n", maxTok)
 	if l.TTSURL == "" {
 		fmt.Println("  tts:       none, clients use the device's voice")
 	} else {

@@ -43,6 +43,9 @@ type Settings struct {
 	Voices       map[string]string
 	Chrome       string // resolved browser path; empty uses the HTML only
 	Instructions string
+	// MaxTokens caps the model's output; 0 selects DefaultMaxTokens. The
+	// narration's word budget follows from it.
+	MaxTokens int
 }
 
 // Result is a finished audio version.
@@ -60,6 +63,9 @@ type Result struct {
 	// browser; Pictures counts the screenshots and images the model saw.
 	Rendered bool `json:"rendered"`
 	Pictures int  `json:"pictures"`
+	// Truncated is set when the model's reply hit the output limit, so the
+	// narration stops before the end of the page.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // Status is where a preview's audio version stands. Result is the last one
@@ -114,7 +120,7 @@ func New(st *store.Store, set Settings, logf func(string, ...any)) *Service {
 	}
 	s.render = RenderPage
 	s.describe = func(ctx context.Context, p Page) (Script, error) {
-		return Describe(ctx, s.client, s.set.LLM, p, s.set.Instructions)
+		return Describe(ctx, s.client, s.set.LLM, p, s.set.Instructions, s.set.MaxTokens)
 	}
 	s.speak = func(ctx context.Context, voice, text string, progress func(int, int)) ([]byte, error) {
 		return Speak(ctx, s.client, s.set.TTS, voice, text, progress)
@@ -132,6 +138,15 @@ func (s *Service) Speech() bool { return s.Enabled() && s.set.TTS.URL != "" }
 
 // Status reports where name's audio version stands.
 func (s *Service) Status(name string) Status {
+	// The job first: one that finishes after this read has saved its result
+	// before it leaves the map, so the result read below then finds it.
+	s.mu.Lock()
+	var j job
+	j0 := s.jobs[name]
+	if j0 != nil {
+		j = *j0
+	}
+	s.mu.Unlock()
 	m, _ := s.st.Live(name)
 	st := Status{State: "none", Speech: s.Speech()}
 	if r, ok := s.result(name); ok {
@@ -139,9 +154,7 @@ func (s *Service) Status(name string) Status {
 		st.State = "ready"
 		st.Stale = r.Version != m.Version
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if j := s.jobs[name]; j != nil {
+	if j0 != nil {
 		if j.err != "" {
 			st.State, st.Error = "failed", j.err
 		} else {
@@ -269,8 +282,12 @@ func (s *Service) make(ctx context.Context, name string, j *job) (Result, error)
 	if err != nil {
 		return Result{}, err
 	}
+	if sc.Truncated {
+		s.logf("listen: %s: the model hit its output limit; raise llm_max_tokens if the model allows more", name)
+	}
 	r := Result{Version: j.version, Created: s.timer().UTC(), Language: sc.Language, Summary: sc.Summary,
-		Narration: sc.Narration, Model: s.set.LLM.Model, Rendered: p.Rendered, Pictures: len(p.Images)}
+		Narration: sc.Narration, Model: s.set.LLM.Model, Rendered: p.Rendered, Pictures: len(p.Images),
+		Truncated: sc.Truncated}
 	if s.set.TTS.URL == "" {
 		return r, nil
 	}
