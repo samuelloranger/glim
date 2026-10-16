@@ -3,6 +3,7 @@ package listen
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -90,6 +91,10 @@ func TestRenderPage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	p, err := RenderPage(ctx, chrome, dir, "report-ab12")
+	var start *StartError
+	if errors.As(err, &start) {
+		t.Skipf("the browser on this machine doesn't start: %v", err)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -32,8 +32,11 @@ const (
 	settle    = 1500 * time.Millisecond
 )
 
+// chromeNames are tried in order. Google Chrome comes first: on Ubuntu,
+// chromium and chromium-browser are often stubs for a snap package that can't
+// be driven headless from a service.
 var chromeNames = []string{
-	"chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome", "headless-shell",
+	"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "headless-shell",
 	"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 	"/Applications/Chromium.app/Contents/MacOS/Chromium",
 }
@@ -133,6 +136,11 @@ func RenderPage(ctx context.Context, chrome, dir, slug string) (Page, error) {
 
 	url := fmt.Sprintf("http://%s/%s/", ln.Addr(), slug)
 	var lay layout
+	// Starting the browser is its own step, so a browser that can't start is
+	// told apart from a page that fails to render.
+	if err := chromedp.Run(cctx); err != nil {
+		return Page{}, &StartError{Browser: chrome, Err: err}
+	}
 	err = chromedp.Run(cctx,
 		chromedp.EmulateViewport(viewW, viewH),
 		chromedp.Navigate(url),
@@ -187,6 +195,16 @@ func RenderPage(ctx context.Context, chrome, dir, slug string) (Page, error) {
 	}
 	return p, nil
 }
+
+// StartError means the browser didn't start, as opposed to a page that
+// failed to render.
+type StartError struct {
+	Browser string
+	Err     error
+}
+
+func (e *StartError) Error() string { return "start " + e.Browser + ": " + e.Err.Error() }
+func (e *StartError) Unwrap() error { return e.Err }
 
 func shoot(ctx context.Context, clip *page.Viewport) ([]byte, error) {
 	var out []byte
