@@ -786,3 +786,103 @@ select {
 .share .dialog-actions {
   flex-wrap: wrap;
 }
+
+/* ---------- listen dialog ---------- */
+
+.listen {
+  width: min(560px, calc(100% - 32px));
+}
+
+.listen-body {
+  display: grid;
+  gap: 12px;
+}
+
+.listen-step {
+  margin: 0;
+  color: var(--iris);
+  font-weight: 600;
+}
+
+.listen-summary {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.listen-transcript summary {
+  cursor: pointer;
+  color: var(--haze);
+  font-size: var(--step--1);
+}
+
+.listen-transcript p {
+  max-height: min(40vh, 360px);
+  margin: 8px 0 0;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--haze);
+  font-size: var(--step--1);
+}
+
+.listen-player {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 14px;
+}
+
+.listen-player[hidden] {
+  display: none;
+}
+
+.listen-player audio {
+  width: 100%;
+}
+
+.listen-rates {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.listen-rates .btn {
+  min-width: 52px;
+  justify-content: center;
+}
+
+.listen-rates .btn.on {
+  color: var(--glint);
+  background: var(--lid-2);
+  font-weight: 600;
+}
+
+.now-playing {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 32px);
+  padding: 4px 12px 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--lid);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+}
+
+.now-title {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  font-weight: 600;
+}

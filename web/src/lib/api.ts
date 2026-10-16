@@ -1,4 +1,4 @@
-import type { ApiErrorCode, Preview, SessionInfo, Snapshot, User } from "./types";
+import type { ApiErrorCode, ListenStatus, Preview, SessionInfo, Snapshot, User } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -76,6 +76,9 @@ export function createApi(fetchFn: typeof fetch = fetch) {
       request<Preview>("POST", `/previews/${enc(name)}/lock`, { password }),
     unlock: (name: string) => request<Preview>("POST", `/previews/${enc(name)}/unlock`),
     remove: (name: string) => request<void>("DELETE", `/previews/${enc(name)}`),
+    listen: (name: string) => request<ListenStatus>("GET", `/previews/${enc(name)}/listen`),
+    startListen: (name: string, again = false) =>
+      request<ListenStatus>("POST", `/previews/${enc(name)}/listen`, again ? { again } : undefined),
     users: () => request<{ users: User[] }>("GET", "/users"),
     addUser: (email: string, password: string) =>
       request<User>("POST", "/users", { email, password }),

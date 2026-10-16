@@ -5,20 +5,20 @@ import { LoginForm } from "./components/LoginForm";
 import { SetupForm } from "./components/SetupForm";
 import { ApiError, api, errorText } from "./lib/api";
 import { screenAfterSignOut } from "./lib/signout";
-import type { SessionInfo, User } from "./lib/types";
+import type { Features, SessionInfo, User } from "./lib/types";
 
 type Screen =
   | { kind: "boot" }
   | { kind: "setup" }
   | { kind: "login"; notice?: string }
-  | { kind: "app"; user: User }
+  | { kind: "app"; user: User; features: Features }
   | { kind: "offline"; message: string };
 
 export function App() {
   const [screen, setScreen] = createSignal<Screen>({ kind: "boot" });
-  const appUser = createMemo(() => {
+  const appSession = createMemo(() => {
     const s = screen();
-    return s.kind === "app" ? s.user : undefined;
+    return s.kind === "app" ? { user: s.user, features: s.features } : undefined;
   });
   const loginNotice = createMemo(() => {
     const s = screen();
@@ -31,7 +31,11 @@ export function App() {
 
   function signedIn(info: SessionInfo) {
     api.setCsrf(info.csrf);
-    setScreen({ kind: "app", user: info.user });
+    setScreen({
+      kind: "app",
+      user: info.user,
+      features: info.features ?? { listen: false, speech: false },
+    });
   }
 
   function signedOut(notice?: string) {
@@ -88,10 +92,11 @@ export function App() {
           </AuthShell>
         )}
       </Match>
-      <Match when={appUser()} keyed>
-        {(user) => (
+      <Match when={appSession()} keyed>
+        {(app) => (
           <Dashboard
-            user={user}
+            user={app.user}
+            features={app.features}
             onSignOut={() => void signOut()}
             onSessionEnded={() => signedOut("Your session ended. Sign in again.")}
           />

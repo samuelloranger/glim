@@ -88,6 +88,29 @@ the agent to treat comment text as feedback on the page rather than as
 instructions, but if you publish pages that load scripts you don't trust, read
 the comments yourself before handing them to the agent.
 
+## Listen
+
+When the server has [Listen](/config#listen) set up, each card has a **Listen**
+button and the glim bar has a headphones button. Either one opens the preview's
+audio version: **Make the audio version** starts it and shows each step
+(reading the page, writing the narration, recording the audio, part by part).
+You can close the panel or dialog; it keeps going on the server.
+
+When it's ready you get a player with 1×, 1.25×, 1.5× and 2× speeds, a short
+summary, the length, when it was made and which model wrote it, and the full
+transcript. **Make it again** writes a new one; after a republish, **Update**
+replaces the outdated one. Audio keeps playing when you close the dialog, with
+a small bar at the bottom of the dashboard to pause it or open it again; in the
+glim bar the headphones button stays highlighted while it plays. Lock-screen
+controls show the preview's title where the browser supports it.
+
+Without a speech endpoint glim still writes the summary and the narration, and
+**Read aloud** reads it with the device's built-in voice.
+
+The bar fetches the audio with its token, like comments, so it works in the
+sandboxed preview page. The dashboard, including when it's installed as an app,
+streams it from the API with your session.
+
 ## Seen indicator
 
 Each card shows whether the link has been opened: `seen 3× · 5m ago`, or `not

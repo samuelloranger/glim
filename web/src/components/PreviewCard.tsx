@@ -21,6 +21,8 @@ export function PreviewCard(props: {
   onRemove: () => void;
   onCopy: () => void;
   onShare: () => void;
+  /** Absent when the server has no Listen set up. */
+  onListen?: () => void;
   onLock: () => void;
   onUnlock: () => void;
 }) {
@@ -114,6 +116,13 @@ export function PreviewCard(props: {
         <button class="btn quiet" type="button" onClick={() => props.onShare()}>
           Share
         </button>
+        <Show when={props.onListen}>
+          {(listen) => (
+            <button class="btn quiet" type="button" onClick={() => listen()()}>
+              Listen
+            </button>
+          )}
+        </Show>
         <ExtendMenu onPick={(ttl, label) => props.onExtend(ttl, label)} />
         <Show
           when={pinned()}

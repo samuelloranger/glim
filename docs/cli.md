@@ -105,6 +105,7 @@ reverse proxy; `--port 0` picks a free port.
 ```sh
 glim config                                        # show resolved config
 glim config [--domain URL] [--bind ADDR] [--port N] [--root DIR] [--ttl 6h] [--live-reload true|false] [--self-fetch true|false]
+glim config [--llm-url URL --llm-model M] [--tts-url URL --tts-model M --tts-voice V --tts-voices fr=V,…] [--chrome PATH|off] [--listen-instructions TEXT]
 ```
 
 With no flags, prints the resolved configuration and its file path. With flags,

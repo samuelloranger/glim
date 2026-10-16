@@ -32,7 +32,41 @@ type Config struct {
 	// Header shows the owner-only glim bar on preview pages opened by the
 	// signed-in dashboard owner. Nil means the default (on).
 	Header *bool `json:"header,omitempty"`
+	// Listen configures the audio version of a preview: a vision model
+	// describes the page and a speech endpoint reads the description aloud.
+	Listen Listen `json:"listen,omitzero"`
 }
+
+// Listen points at OpenAI-compatible endpoints, so any provider (hosted or
+// local) works. API keys are never stored here: they come from the
+// GLIM_LLM_API_KEY and GLIM_TTS_API_KEY environment variables.
+type Listen struct {
+	// LLMURL is the base of an OpenAI-compatible API, e.g.
+	// https://api.example.com/v1; glim calls LLMURL/chat/completions.
+	LLMURL   string `json:"llm_url,omitempty"`
+	LLMModel string `json:"llm_model,omitempty"`
+	// LLMKey is filled from GLIM_LLM_API_KEY and never saved.
+	LLMKey string `json:"-"`
+	// TTSURL is the base of an OpenAI-compatible speech API; glim calls
+	// TTSURL/audio/speech. Unset means no audio: the dashboard and the bar
+	// offer the device's own voice instead.
+	TTSURL   string `json:"tts_url,omitempty"`
+	TTSModel string `json:"tts_model,omitempty"`
+	// TTSVoice is the default voice; TTSVoices maps a language subtag (the
+	// part of the page's language before any "-", such as "fr") to a voice.
+	TTSVoice  string            `json:"tts_voice,omitempty"`
+	TTSVoices map[string]string `json:"tts_voices,omitempty"`
+	// TTSKey is filled from GLIM_TTS_API_KEY and never saved.
+	TTSKey string `json:"-"`
+	// Chrome is the browser used to screenshot the page; empty finds one on
+	// PATH, "off" never uses one (text and image files only).
+	Chrome string `json:"chrome,omitempty"`
+	// Instructions are appended to the prompt, e.g. "Keep it under 5 minutes."
+	Instructions string `json:"instructions,omitempty"`
+}
+
+// Enabled reports whether a model is configured to describe pages.
+func (l Listen) Enabled() bool { return l.LLMURL != "" && l.LLMModel != "" }
 
 // LiveReloadEnabled reports whether live reload is on (the default).
 func (c Config) LiveReloadEnabled() bool { return c.LiveReload == nil || *c.LiveReload }
@@ -87,6 +121,7 @@ func Load() Config {
 			if f.Header != nil {
 				c.Header = f.Header
 			}
+			c.Listen = f.Listen
 		}
 	}
 	if v := firstEnv("GLIM_DOMAIN", "GLIM_BASE_URL"); v != "" {
@@ -121,7 +156,27 @@ func Load() Config {
 			c.Header = &b
 		}
 	}
+	listenEnv(&c.Listen)
 	return c
+}
+
+// listenEnv applies the GLIM_LLM_* / GLIM_TTS_* / GLIM_CHROME overrides.
+func listenEnv(l *Listen) {
+	for env, dst := range map[string]*string{
+		"GLIM_LLM_URL":             &l.LLMURL,
+		"GLIM_LLM_MODEL":           &l.LLMModel,
+		"GLIM_LLM_API_KEY":         &l.LLMKey,
+		"GLIM_TTS_URL":             &l.TTSURL,
+		"GLIM_TTS_MODEL":           &l.TTSModel,
+		"GLIM_TTS_VOICE":           &l.TTSVoice,
+		"GLIM_TTS_API_KEY":         &l.TTSKey,
+		"GLIM_CHROME":              &l.Chrome,
+		"GLIM_LISTEN_INSTRUCTIONS": &l.Instructions,
+	} {
+		if v := os.Getenv(env); v != "" {
+			*dst = v
+		}
+	}
 }
 
 func (c Config) BaseURL() string {
