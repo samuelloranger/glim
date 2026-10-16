@@ -815,10 +815,9 @@ select {
   font-size: var(--step--1);
 }
 
+/* No scroll of its own: the dialog scrolls, and one scroll is enough. */
 .listen-transcript p {
-  max-height: min(40vh, 360px);
   margin: 8px 0 0;
-  overflow-y: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--haze);

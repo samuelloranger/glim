@@ -52,7 +52,10 @@ test("the dashboard makes and plays a preview's audio version", async () => {
     new RegExp(`/_glim/api/previews/${slug}/listen/audio\\?v=`),
   );
   await dialog.getByText("Transcript").click();
-  await expect(dialog.getByText("This page is a short test page with a heading.")).toBeVisible();
+  const text = dialog.getByText("This page is a short test page with a heading.");
+  await expect(text).toBeVisible();
+  // One scroll only: the dialog's, not a second one inside the transcript.
+  expect(await text.evaluate((el) => getComputedStyle(el).overflowY)).toBe("visible");
   await expect(dialog.getByRole("button", { name: "Make it again" })).toBeVisible();
   await dialog.getByRole("button", { name: "1.5×" }).click();
   await expect(dialog.getByRole("button", { name: "1.5×" })).toHaveAttribute(
@@ -73,7 +76,10 @@ test("the glim bar makes the audio version and loads it", async () => {
   await expect(panel.getByText("A short test page.")).toBeVisible({ timeout: 10_000 });
   await expect(panel.locator("audio")).toHaveAttribute("src", /^blob:/);
   await panel.getByText("Transcript").click();
-  await expect(panel.getByText("This page is a short test page with a heading.")).toBeVisible();
+  const text = panel.getByText("This page is a short test page with a heading.");
+  await expect(text).toBeVisible();
+  // One scroll only: the panel's, not a second one inside the transcript.
+  expect(await text.evaluate((el) => getComputedStyle(el).overflowY)).toBe("visible");
   // Reopening shows the saved version without making a new one.
   await host.getByRole("button", { name: "Listen" }).click();
   await expect(panel).toHaveCount(0);

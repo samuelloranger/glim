@@ -2,6 +2,7 @@ package listen
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,22 +30,21 @@ type Endpoint struct {
 	Key   string
 }
 
-const systemPrompt = `You turn a web page into an audio version for someone who cannot see the screen, and write a short summary of it.
+const systemPrompt = `You make the audio version of a web page: the page itself, read aloud for someone who listens instead of reading, the way an audiobook reads a book. You also write a short summary of it.
 
-You get the page's text and pictures of it: screenshots from top to bottom, then close-ups of its largest pictures. Use both: the text for exact wording and numbers, the pictures for everything visual.
+You get the page's text and pictures of it: screenshots from top to bottom, then close-ups of its largest pictures. Take the exact words from the text, and what the text leaves out from the pictures.
 
-Reply with one JSON object and nothing else:
+Reply with one JSON object:
 {"language": "<BCP 47 code of the page's main language, like en or fr-CA>",
  "summary": "<3 to 6 sentences: what the page is and its main points>",
- "narration": "<the script read aloud>"}
+ "narration": "<the page, read aloud>"}
 
 The narration:
-- is in the page's language, written to be heard: plain spoken sentences, no markdown, no lists with symbols, no emoji, no URLs, no code. Say symbols, units and abbreviations the way a person reads them aloud.
-- opens with one sentence saying what the page is.
-- then walks through the page in reading order and covers all of it: every substantive point, fact, number, step and conclusion, not just the gist.
-- describes the visual side too: the layout and design (style, colours, typography, mood), and what each picture, chart, diagram, table, screenshot or interface mockup shows. For a chart, say what is measured, the trend and the notable values; for a table, read the key rows and summarize the rest. Never just say "an image".
-- skips navigation chrome, repeated boilerplate and anything the page only contains for machines.
-- is as long as the content needs, and no longer.`
+- is the page's own content, in its own words, order and language, spoken directly as the author would say it: "Revenue rose twelve percent".
+- reads each heading as a short spoken line that leads into the text under it, and keeps every point, fact, number, step and conclusion.
+- is plain spoken sentences: a list becomes sentences, a table becomes its important rows said in words, and symbols, units, abbreviations and links are said the way a person reads them aloud.
+- gives each picture, chart, diagram or interface mockup a sentence or two, at the place it appears, for what it adds to the text: what a chart measures, its trend and its key values; what a mockup or photo shows.
+- covers the page's body, from its first heading to its last word.`
 
 // Describe asks the model at e for the summary and narration of p. Some
 // providers reject JSON mode or images; on a 4xx it retries without JSON
@@ -246,25 +246,22 @@ func Redact(u string) string {
 }
 
 // parseScript reads the model's JSON, tolerating code fences or prose around
-// it; a reply that isn't JSON at all is used as the narration.
+// it, raw line breaks inside its strings, and the fields split across an
+// array of objects; a reply that isn't JSON at all is used as the narration.
 func parseScript(content string) (Script, error) {
 	s := strings.TrimSpace(content)
+	var cands []string
 	if i, j := strings.Index(s, "{"), strings.LastIndex(s, "}"); i >= 0 && j > i {
-		var sc Script
-		obj := []byte(s[i : j+1])
-		err := json.Unmarshal(obj, &sc)
-		if err != nil {
-			// Models often put raw line breaks inside JSON strings.
-			err = json.Unmarshal(escapeControls(obj), &sc)
-		}
-		if err == nil && strings.TrimSpace(sc.Narration) != "" {
-			sc.Narration = strings.TrimSpace(sc.Narration)
-			sc.Summary = strings.TrimSpace(sc.Summary)
-			sc.Language = strings.TrimSpace(sc.Language)
-			if sc.Summary == "" {
-				sc.Summary = firstSentences(sc.Narration, 3)
+		cands = append(cands, s[i:j+1])
+	}
+	if i, j := strings.Index(s, "["), strings.LastIndex(s, "]"); i >= 0 && j > i {
+		cands = append(cands, s[i:j+1])
+	}
+	for _, c := range cands {
+		for _, b := range [][]byte{[]byte(c), escapeControls([]byte(c))} {
+			if sc, ok := decodeScript(b); ok {
+				return sc, nil
 			}
-			return sc, nil
 		}
 	}
 	s = strings.Trim(s, "`")
@@ -272,6 +269,33 @@ func parseScript(content string) (Script, error) {
 		return Script{}, errors.New("The model returned an empty answer")
 	}
 	return Script{Summary: firstSentences(s, 3), Narration: s}, nil
+}
+
+// decodeScript reads one object, or an array of objects whose fields it
+// merges (the first non-empty value of each wins).
+func decodeScript(b []byte) (Script, bool) {
+	var sc Script
+	if json.Unmarshal(b, &sc) != nil {
+		var parts []Script
+		if json.Unmarshal(b, &parts) != nil {
+			return Script{}, false
+		}
+		for _, p := range parts {
+			sc.Language = cmp.Or(sc.Language, p.Language)
+			sc.Summary = cmp.Or(sc.Summary, p.Summary)
+			sc.Narration = cmp.Or(sc.Narration, p.Narration)
+		}
+	}
+	sc.Narration = strings.TrimSpace(sc.Narration)
+	sc.Summary = strings.TrimSpace(sc.Summary)
+	sc.Language = strings.TrimSpace(sc.Language)
+	if sc.Narration == "" {
+		return Script{}, false
+	}
+	if sc.Summary == "" {
+		sc.Summary = firstSentences(sc.Narration, 3)
+	}
+	return sc, true
 }
 
 // escapeControls escapes raw control characters inside JSON string literals,

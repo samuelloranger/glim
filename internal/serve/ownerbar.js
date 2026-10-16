@@ -114,7 +114,8 @@ try {
     ".sum{white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}" +
     ".cp details{border-top:1px solid var(--bd);padding-top:6px}" +
     ".cp summary{cursor:pointer;color:var(--mut);font-size:12px;padding:2px 0}" +
-    ".trn{max-height:min(40vh,320px);overflow:auto;margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere;" +
+    // No scroll of its own: the panel scrolls, and one scroll is enough.
+    ".trn{margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere;" +
     "color:var(--mut);font-size:12px;user-select:text;-webkit-user-select:text}" +
     ".rt button{min-width:40px}.rt button.on{background:var(--hv);font-weight:700}" +
     ".man input{all:unset;box-sizing:border-box;display:block;width:100%;padding:6px 8px;color:var(--fg);font:12px monospace;" +

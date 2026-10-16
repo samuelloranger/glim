@@ -87,6 +87,11 @@ func TestParseScript(t *testing.T) {
 	if err != nil || sc.Language != "en" || sc.Narration != "First \"quoted\" part.\n\nSecond part." {
 		t.Fatalf("raw newlines: %+v %v", sc, err)
 	}
+	// The fields split across an array of objects.
+	sc, err = parseScript("[\n{\"language\": \"en\", \"summary\": \"Sum.\"},\n{\"narration\": \"Goal.\nRead it.\"}\n]")
+	if err != nil || sc.Language != "en" || sc.Summary != "Sum." || sc.Narration != "Goal.\nRead it." {
+		t.Fatalf("array: %+v %v", sc, err)
+	}
 	sc, err = parseScript("Just prose. Second. Third. Fourth.")
 	if err != nil || sc.Narration != "Just prose. Second. Third. Fourth." || sc.Summary != "Just prose. Second. Third." {
 		t.Fatalf("%+v %v", sc, err)
