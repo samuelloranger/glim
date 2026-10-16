@@ -767,7 +767,8 @@ try {
     var key = r.version + r.created;
     if (audioFor === key) return;
     audioFor = key;
-    fetch(D.listen + "/audio", { headers: { "X-Glim-Bar": D.tok }, credentials: "omit", mode: "cors" }).then(function (res) {
+    // The query changes with each version, so a new one never comes from the cache.
+    fetch(D.listen + "/audio?v=" + encodeURIComponent(r.created), { headers: { "X-Glim-Bar": D.tok }, credentials: "omit", mode: "cors" }).then(function (res) {
       if (!res.ok) throw new Error("The audio couldn't be loaded (" + res.status + ").");
       return res.blob();
     }).then(function (b) {

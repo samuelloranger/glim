@@ -303,8 +303,13 @@ func (s *Service) voiceFor(lang string) string {
 // save writes the audio first and the result last, each by rename, so a
 // reader never sees a result whose audio isn't there.
 func (s *Service) save(name string, r Result, audio []byte) error {
+	// A preview removed since the version check must not be recreated as a
+	// folder holding only this.
+	if _, err := os.Stat(filepath.Join(s.st.Dir(name), store.ManifestFile)); err != nil {
+		return err
+	}
 	dir := filepath.Join(s.st.Dir(name), Dir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
 		return err
 	}
 	if r.Audio {

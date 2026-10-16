@@ -635,9 +635,9 @@ func newListen(l config.Listen, st *store.Store) *listen.Service {
 	}
 	if l.Enabled() {
 		set.Chrome = listen.FindChrome(l.Chrome)
-		log.Printf("listen: describing previews with %s at %s", l.LLMModel, l.LLMURL)
+		log.Printf("listen: describing previews with %s at %s", l.LLMModel, listen.Redact(l.LLMURL))
 		if l.TTSURL != "" {
-			log.Printf("listen: speech from %s at %s", orDefault(l.TTSModel, "the default model"), l.TTSURL)
+			log.Printf("listen: speech from %s at %s", orDefault(l.TTSModel, "the default model"), listen.Redact(l.TTSURL))
 		} else {
 			log.Printf("listen: no tts_url, so clients read the narration with the device's voice")
 		}
@@ -776,11 +776,11 @@ func printListen(l config.Listen) {
 		return "set"
 	}
 	fmt.Printf("listen:      on\n")
-	fmt.Printf("  llm:       %s at %s (GLIM_LLM_API_KEY %s)\n", l.LLMModel, l.LLMURL, set(l.LLMKey))
+	fmt.Printf("  llm:       %s at %s (GLIM_LLM_API_KEY %s)\n", l.LLMModel, listen.Redact(l.LLMURL), set(l.LLMKey))
 	if l.TTSURL == "" {
 		fmt.Println("  tts:       none, clients use the device's voice")
 	} else {
-		fmt.Printf("  tts:       %s at %s (GLIM_TTS_API_KEY %s)\n", orDefault(l.TTSModel, "default model"), l.TTSURL, set(l.TTSKey))
+		fmt.Printf("  tts:       %s at %s (GLIM_TTS_API_KEY %s)\n", orDefault(l.TTSModel, "default model"), listen.Redact(l.TTSURL), set(l.TTSKey))
 		fmt.Printf("  voice:     %s\n", orDefault(l.TTSVoice, "provider default"))
 		langs := make([]string, 0, len(l.TTSVoices))
 		for k := range l.TTSVoices {

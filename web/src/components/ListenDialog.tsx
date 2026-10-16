@@ -62,8 +62,11 @@ export function ListenDialog(props: {
         setError("");
         if (!dialog.open) dialog.showModal();
         void refresh(name, gen);
-      } else if (dialog.open) {
-        dialog.close();
+      } else {
+        // Forget this preview's status, so opening another one never pairs
+        // it with this one's result.
+        setStatus(null);
+        if (dialog.open) dialog.close();
       }
     },
   );

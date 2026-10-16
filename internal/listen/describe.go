@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 )
@@ -225,16 +226,23 @@ func providerMessage(data []byte) string {
 	return msg
 }
 
+// hostOf names an endpoint in messages by its host alone: never the userinfo,
+// path or query, any of which may carry a credential.
 func hostOf(u string) string {
-	s := u
-	if _, rest, ok := strings.Cut(s, "://"); ok {
-		s = rest
+	if p, err := url.Parse(u); err == nil && p.Host != "" {
+		return p.Host
 	}
-	host, _, _ := strings.Cut(s, "/")
-	if host == "" {
-		return "the provider"
+	return "the provider"
+}
+
+// Redact returns u without userinfo or query, for logs.
+func Redact(u string) string {
+	p, err := url.Parse(u)
+	if err != nil || p.Host == "" {
+		return hostOf(u)
 	}
-	return host
+	p.User, p.RawQuery, p.Fragment = nil, "", ""
+	return p.String()
 }
 
 // parseScript reads the model's JSON, tolerating code fences or prose around

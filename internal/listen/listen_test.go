@@ -298,3 +298,28 @@ func TestServiceOff(t *testing.T) {
 		t.Fatalf("missing preview: %v", err)
 	}
 }
+
+func TestHostOfHidesCredentials(t *testing.T) {
+	if got := hostOf("https://user:secret@api.example.com/v1?key=abc"); got != "api.example.com" {
+		t.Fatalf("hostOf = %q", got)
+	}
+	if got := Redact("https://user:secret@api.example.com/v1?key=abc"); got != "https://api.example.com/v1" {
+		t.Fatalf("Redact = %q", got)
+	}
+	if got := hostOf("not a url"); got != "the provider" {
+		t.Fatalf("hostOf(junk) = %q", got)
+	}
+}
+
+func TestSaveSkipsARemovedPreview(t *testing.T) {
+	s, st, name := newTestService(t, Settings{})
+	if err := st.Remove(name); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.save(name, Result{Narration: "x"}, nil); err == nil {
+		t.Fatal("saved into a removed preview")
+	}
+	if _, err := os.Stat(st.Dir(name)); !os.IsNotExist(err) {
+		t.Fatalf("preview folder recreated: %v", err)
+	}
+}
