@@ -818,7 +818,8 @@ try {
     var r = st.result;
     if (st.state === "working") {
       var t = stepText[st.step] || "Working…";
-      if (st.step === "audio" && st.total > 1) t = "Recording the audio, part " + Math.min(st.done + 1, st.total) + " of " + st.total + "…";
+      // done is left out of the JSON while it is 0.
+      if (st.step === "audio" && st.total > 1) t = "Recording the audio, part " + Math.min((st.done || 0) + 1, st.total) + " of " + st.total + "…";
       p.appendChild(el("p", "mu", t));
       p.appendChild(el("p", "mu", "You can close this panel; it keeps going."));
       stopListenPoll();
