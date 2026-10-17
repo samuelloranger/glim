@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,6 +26,7 @@ import (
 	"github.com/samuelloranger/glim/internal/caddy"
 	"github.com/samuelloranger/glim/internal/config"
 	"github.com/samuelloranger/glim/internal/install"
+	"github.com/samuelloranger/glim/internal/listen"
 	"github.com/samuelloranger/glim/internal/mcpserver"
 	"github.com/samuelloranger/glim/internal/serve"
 	"github.com/samuelloranger/glim/internal/store"
@@ -603,8 +605,9 @@ func cmdServe(args []string) error {
 	go hub.Run(ctx)
 	recorder := db.NewViewRecorder(hub.Poke)
 	defer recorder.Close()
+	lst := newListen(cfg.Listen, st)
 	apiSrv := api.New(api.Deps{
-		Store: st, Auth: db, Limiter: auth.NewLimiter(nil), Hub: hub,
+		Store: st, Auth: db, Limiter: auth.NewLimiter(nil), Hub: hub, Listen: lst,
 		SecureCookies: strings.HasPrefix(base, "https://"),
 		PublicHost:    publicHost(base),
 		Logf:          log.Printf,
@@ -614,9 +617,45 @@ func cmdServe(args []string) error {
 		LiveReload:  cfg.LiveReloadEnabled(),
 		NoSelfFetch: !cfg.SelfFetchEnabled(),
 		NoHeader:    !cfg.HeaderEnabled(),
+		Listen:      lst.Enabled(),
 		Views:       &serve.Views{Record: recorder.Record, IsOwner: db.IsOwnerToken, BarToken: db.BarToken},
 		Unlock: &serve.Unlock{Token: db.UnlockToken, Limiter: auth.NewLimiter(nil),
 			Secure: strings.HasPrefix(base, "https://")}})
+}
+
+// newListen builds the audio-version service from the config and logs what
+// it will use (never the keys).
+func newListen(l config.Listen, st *store.Store) *listen.Service {
+	set := listen.Settings{
+		LLM:          listen.Endpoint{URL: l.LLMURL, Model: l.LLMModel, Key: l.LLMKey},
+		TTS:          listen.Endpoint{URL: l.TTSURL, Model: l.TTSModel, Key: l.TTSKey},
+		Voice:        l.TTSVoice,
+		Voices:       l.TTSVoices,
+		Instructions: l.Instructions,
+		MaxTokens:    l.LLMMaxTokens,
+	}
+	if l.Enabled() {
+		set.Chrome = listen.FindChrome(l.Chrome)
+		log.Printf("listen: describing previews with %s at %s", l.LLMModel, listen.Redact(l.LLMURL))
+		if l.TTSURL != "" {
+			log.Printf("listen: speech from %s at %s", orDefault(l.TTSModel, "the default model"), listen.Redact(l.TTSURL))
+		} else {
+			log.Printf("listen: no tts_url, so clients read the narration with the device's voice")
+		}
+		if set.Chrome != "" {
+			log.Printf("listen: screenshots with %s", set.Chrome)
+		} else {
+			log.Printf("listen: no browser, so pages are read from their HTML and image files")
+		}
+	}
+	return listen.New(st, set, log.Printf)
+}
+
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }
 
 func cmdCaddy() error {
@@ -640,6 +679,15 @@ func cmdConfig(args []string) error {
 	liveReload := fs.String("live-reload", "", "refresh open tabs when a preview is republished (true or false)")
 	header := fs.String("header", "", "show the owner-only glim bar on preview pages (true or false)")
 	selfFetch := fs.String("self-fetch", "", "let preview pages fetch their own files (true or false)")
+	llmURL := fs.String("llm-url", "", "Listen: base URL of an OpenAI-compatible API that describes pages (key from GLIM_LLM_API_KEY)")
+	llmModel := fs.String("llm-model", "", "Listen: vision model that describes pages")
+	llmMax := fs.Int("llm-max-tokens", 0, "Listen: the model's output limit, which sets the narration's length (default 4096)")
+	ttsURL := fs.String("tts-url", "", "Listen: base URL of an OpenAI-compatible speech API (key from GLIM_TTS_API_KEY)")
+	ttsModel := fs.String("tts-model", "", "Listen: speech model")
+	ttsVoice := fs.String("tts-voice", "", "Listen: default voice")
+	ttsVoices := fs.String("tts-voices", "", "Listen: voice per language, e.g. fr=voice1,en=voice2")
+	chrome := fs.String("chrome", "", "Listen: browser for screenshots (path or name), or off")
+	instructions := fs.String("listen-instructions", "", "Listen: extra instructions for the narration")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -656,6 +704,7 @@ func cmdConfig(args []string) error {
 		fmt.Printf("live_reload: %t\n", cfg.LiveReloadEnabled())
 		fmt.Printf("self_fetch:  %t\n", cfg.SelfFetchEnabled())
 		fmt.Printf("header:      %t\n", cfg.HeaderEnabled())
+		printListen(cfg.Listen)
 		return nil
 	}
 	if *domain != "" {
@@ -694,11 +743,86 @@ func cmdConfig(args []string) error {
 		}
 		cfg.Header = &b
 	}
+	for flag, dst := range map[*string]*string{
+		llmURL: &cfg.Listen.LLMURL, llmModel: &cfg.Listen.LLMModel,
+		ttsURL: &cfg.Listen.TTSURL, ttsModel: &cfg.Listen.TTSModel, ttsVoice: &cfg.Listen.TTSVoice,
+		chrome: &cfg.Listen.Chrome, instructions: &cfg.Listen.Instructions,
+	} {
+		if *flag != "" {
+			*dst = strings.TrimSpace(*flag)
+		}
+	}
+	if *llmMax > 0 {
+		cfg.Listen.LLMMaxTokens = *llmMax
+	}
+	if *ttsVoices != "" {
+		voices, err := parseVoices(*ttsVoices)
+		if err != nil {
+			return err
+		}
+		cfg.Listen.TTSVoices = voices
+	}
 	if err := cfg.Save(); err != nil {
 		return err
 	}
 	fmt.Println("saved", config.Path())
 	return nil
+}
+
+func printListen(l config.Listen) {
+	if !l.Enabled() {
+		fmt.Println("listen:      off (set --llm-url and --llm-model)")
+		return
+	}
+	set := func(s string) string {
+		if s == "" {
+			return "unset"
+		}
+		return "set"
+	}
+	fmt.Printf("listen:      on\n")
+	fmt.Printf("  llm:       %s at %s (GLIM_LLM_API_KEY %s)\n", l.LLMModel, listen.Redact(l.LLMURL), set(l.LLMKey))
+	maxTok := l.LLMMaxTokens
+	if maxTok <= 0 {
+		maxTok = listen.DefaultMaxTokens
+	}
+	fmt.Printf("  output:    up to %d tokens\n", maxTok)
+	if l.TTSURL == "" {
+		fmt.Println("  tts:       none, clients use the device's voice")
+	} else {
+		fmt.Printf("  tts:       %s at %s (GLIM_TTS_API_KEY %s)\n", orDefault(l.TTSModel, "default model"), listen.Redact(l.TTSURL), set(l.TTSKey))
+		fmt.Printf("  voice:     %s\n", orDefault(l.TTSVoice, "provider default"))
+		langs := make([]string, 0, len(l.TTSVoices))
+		for k := range l.TTSVoices {
+			langs = append(langs, k)
+		}
+		sort.Strings(langs)
+		for _, k := range langs {
+			fmt.Printf("  voice %s:  %s\n", k, l.TTSVoices[k])
+		}
+	}
+	chrome := listen.FindChrome(l.Chrome)
+	if chrome == "" {
+		chrome = "none (pages are read from their HTML)"
+	}
+	fmt.Printf("  browser:   %s\n", chrome)
+}
+
+// parseVoices reads "fr=voice1,en=voice2"; "-" clears the map.
+func parseVoices(s string) (map[string]string, error) {
+	if strings.TrimSpace(s) == "-" {
+		return nil, nil
+	}
+	out := map[string]string{}
+	for _, pair := range strings.Split(s, ",") {
+		lang, voice, ok := strings.Cut(strings.TrimSpace(pair), "=")
+		lang, voice = strings.ToLower(strings.TrimSpace(lang)), strings.TrimSpace(voice)
+		if !ok || lang == "" || voice == "" {
+			return nil, fmt.Errorf("--tts-voices: want lang=voice pairs like fr=voice1,en=voice2, got %q", pair)
+		}
+		out[lang] = voice
+	}
+	return out, nil
 }
 
 func ensureLocalServer(cfg config.Config) (string, error) {
@@ -1044,7 +1168,7 @@ usage:
                                               publish, print the URL (or JSON)
   glim - [--format html|md|txt|json] ...      same, reading the entry from stdin
   glim serve [--port N] [--root DIR]          run the preview server
-  glim config [--domain URL --port N ...]     show or set config
+  glim config [--domain URL --port N ...]     show or set config (and Listen: --llm-url, --tts-url, ...)
   glim caddy                                  print the reverse-proxy vhost
   glim ls [--project P] [--json] | rm <name>... | gc
                                               manage previews

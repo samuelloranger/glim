@@ -15,8 +15,9 @@ type userJSON struct {
 }
 
 type sessionJSON struct {
-	User userJSON `json:"user"`
-	CSRF string   `json:"csrf"`
+	User     userJSON     `json:"user"`
+	CSRF     string       `json:"csrf"`
+	Features featuresJSON `json:"features"`
 }
 
 func toUserJSON(u auth.User) userJSON { return userJSON{Email: u.Email, CreatedAt: u.CreatedAt} }
@@ -92,7 +93,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user auth.
 	}
 	s.setSessionCookie(w, sess)
 	s.setOwnerCookie(w, sess)
-	writeJSON(w, status, sessionJSON{User: toUserJSON(user), CSRF: sess.CSRF})
+	writeJSON(w, status, sessionJSON{User: toUserJSON(user), CSRF: sess.CSRF, Features: s.features()})
 }
 
 func (s *Server) postLogout(w http.ResponseWriter, r *http.Request, sess auth.Session) {
@@ -110,5 +111,5 @@ func (s *Server) postLogout(w http.ResponseWriter, r *http.Request, sess auth.Se
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request, sess auth.Session) {
 	s.setSessionCookie(w, sess)
 	s.setOwnerCookie(w, sess)
-	writeJSON(w, http.StatusOK, sessionJSON{User: toUserJSON(sess.User), CSRF: sess.CSRF})
+	writeJSON(w, http.StatusOK, sessionJSON{User: toUserJSON(sess.User), CSRF: sess.CSRF, Features: s.features()})
 }

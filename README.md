@@ -54,6 +54,10 @@ email and password, so do that before exposing the server. See
 [docs/dashboard.md](docs/dashboard.md).
 Comments you leave on a preview from its glim bar reach your agent through the
 MCP `comments` tool, and its replies come back under them.
+**Listen** makes an audio version of a preview on demand: a vision model
+describes its text, pictures and design, and a speech endpoint reads that aloud.
+Both are any OpenAI-compatible API, hosted or local; see
+[docs/config.md](docs/config.md#listen).
 Over HTTPS it also installs as an app (iPhone Home Screen included) and can send a
 notification when a preview is published; see
 [docs/dashboard.md](docs/dashboard.md#install-as-an-app-and-notifications).
@@ -64,6 +68,7 @@ notification when a preview is published; see
 glim <entry.html|dir|-> [--title T] [--project P] [--ttl 6h] [--name SLUG] [--local] [--qr] [--json]  publish, print URL or JSON (`-` reads stdin)
 glim serve [--bind ADDR] [--port N] [--root DIR]                       run the preview server
 glim config [--domain URL --bind ADDR --port N --root DIR --ttl 6h --live-reload true|false --self-fetch true|false --header true|false]  show or set config
+glim config [--llm-url URL --llm-model M --tts-url URL --tts-model M --tts-voice V --tts-voices fr=V --chrome PATH|off]  set up Listen
 glim caddy                                                             print a reverse-proxy vhost
 glim ls [--project P] [--json] | rm <name>... | gc                      manage previews
 glim extend <name> <ttl> | pin <name> | unpin <name>                  change a preview's lifetime

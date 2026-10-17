@@ -1,7 +1,9 @@
 // The owner-only glim bar. Wrapped by ownerbar.go as function(D){...}(data);
-// D is {title, url, dash, exp, locked, qr?: {size, path}, api?, tok?}; api and
-// tok, present when comments are on, are the comment endpoint and the token
-// sent to it (the sandboxed page sends no cookies). It renders a fixed, closed shadow DOM
+// D is {title, url, dash, exp, locked, qr?: {size, path}, api?, tok?, listen?};
+// api and tok, present when comments are on, are the comment endpoint and the
+// token sent to it (the sandboxed page sends no cookies); listen, present
+// when the server makes audio versions, is the Listen endpoint, which takes
+// the same token. It renders a fixed, closed shadow DOM
 // overlay, never touches page layout, and swallows every error. On narrow
 // screens the bar docks to the bottom edge and pads itself by the safe-area
 // insets; on wider ones it floats as a rounded bar.
@@ -42,8 +44,8 @@ try {
     ".w{position:relative;display:flex;justify-content:center;pointer-events:none;" +
     "padding:0 8px calc(8px + env(safe-area-inset-bottom,0px));" +
     "font:13px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
-    "--bg:rgba(255,255,255,.94);--fg:#1c1b19;--mut:#6b675f;--bd:rgba(0,0,0,.14);--hv:rgba(0,0,0,.07);--ac:#c2410c;--mk:#6366f1}" +
-    "@media(prefers-color-scheme:dark){.w{--bg:rgba(28,27,25,.94);--fg:#f1efe9;--mut:#a8a398;--bd:rgba(255,255,255,.18);--hv:rgba(255,255,255,.1);--ac:#fb923c;--mk:#818cf8}}" +
+    "--bg:rgba(255,255,255,.94);--sol:#fff;--fg:#1c1b19;--mut:#6b675f;--bd:rgba(0,0,0,.14);--hv:rgba(0,0,0,.07);--ac:#c2410c;--mk:#6366f1}" +
+    "@media(prefers-color-scheme:dark){.w{--bg:rgba(28,27,25,.94);--sol:#1c1b19;--fg:#f1efe9;--mut:#a8a398;--bd:rgba(255,255,255,.18);--hv:rgba(255,255,255,.1);--ac:#fb923c;--mk:#818cf8}}" +
     ".bar,.pill{pointer-events:auto;background:var(--bg);color:var(--fg);border:1px solid var(--bd);" +
     "box-shadow:0 2px 12px rgba(0,0,0,.22);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}" +
     ".bar{display:flex;align-items:center;gap:4px;width:100%;max-width:640px;height:36px;padding:0 4px 0 10px;border-radius:18px}" +
@@ -105,6 +107,17 @@ try {
     "border:1px solid var(--bd);border-radius:8px;color:var(--fg);font:13px/1.4 inherit;white-space:pre-wrap;" +
     "user-select:text;-webkit-user-select:text;cursor:text}" +
     ".cp textarea:focus-visible{outline:2px solid var(--ac);outline-offset:-1px}" +
+    // Listen: the player, the summary and the transcript.
+    // Solid, unlike the other panels: long text over the page's own is hard to read.
+    ".man.ls{background:var(--sol)}" +
+    ".cp audio{display:block;width:100%;height:36px}" +
+    ".sum{white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}" +
+    ".cp details{border-top:1px solid var(--bd);padding-top:6px}" +
+    ".cp summary{cursor:pointer;color:var(--mut);font-size:12px;padding:2px 0}" +
+    // No scroll of its own: the panel scrolls, and one scroll is enough.
+    ".trn{margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere;" +
+    "color:var(--mut);font-size:12px;user-select:text;-webkit-user-select:text}" +
+    ".rt button{min-width:40px}.rt button.on{background:var(--hv);font-weight:700}" +
     ".man input{all:unset;box-sizing:border-box;display:block;width:100%;padding:6px 8px;color:var(--fg);font:12px monospace;" +
     "user-select:text;-webkit-user-select:text}" +
     // Narrow screens: a flat strip flush with the bottom edge, padded by the
@@ -213,6 +226,13 @@ try {
     badge.hidden = true;
     cmt.appendChild(badge);
   }
+  var lsn = null;
+  if (D.listen && D.tok) {
+    lsn = btn("button", "Listen");
+    lsn.setAttribute("aria-expanded", "false");
+    lsn.appendChild(icon(["M4 14v-2a8 8 0 0 1 16 0v2", "M4 14h3v6H5a1 1 0 0 1-1-1z", "M20 14h-3v6h2a1 1 0 0 0 1-1z"], 15));
+    lsn.appendChild(el("span", "lb", "Listen"));
+  }
   var dash = btn("a", "Back to dashboard");
   dash.href = D.dash;
   dash.target = "_self";
@@ -226,6 +246,7 @@ try {
   bar.appendChild(copy);
   bar.appendChild(share);
   if (cmt) bar.appendChild(cmt);
+  if (lsn) bar.appendChild(lsn);
   bar.appendChild(dash);
   bar.appendChild(col);
 
@@ -238,9 +259,12 @@ try {
   // a comments panel. Closing it also ends comment picking.
   var man = null, opener = null;
   function closeManual() {
+    if (lsn && player.parentNode && player.parentNode !== hold) hold.appendChild(player);
     if (man) { man.remove(); man = null; }
     share.setAttribute("aria-expanded", "false");
     if (cmt) cmt.setAttribute("aria-expanded", "false");
+    if (lsn) lsn.setAttribute("aria-expanded", "false");
+    stopListenPoll();
     stopPick();
     showHL(null);
     draft = null;
@@ -351,13 +375,14 @@ try {
   hl.hidden = true;
   pins.appendChild(hl);
 
-  function call(method, path, body) {
+  function call(method, path, body) { return request(D.api + path, method, body); }
+  function request(url, method, body) {
     var opts = { method: method, headers: { "X-Glim-Bar": D.tok }, credentials: "omit", mode: "cors", cache: "no-store" };
     if (body) {
       opts.headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(body);
     }
-    return fetch(D.api + path, opts).then(function (r) {
+    return fetch(url, opts).then(function (r) {
       if (r.status === 204) return null;
       return r.json().then(function (j) {
         if (!r.ok) throw new Error((j && j.error) || "Request failed (" + r.status + ").");
@@ -522,14 +547,15 @@ try {
     root.style.removeProperty("cursor");
   }
 
-  function panel(label) {
+  function panel(label, from) {
     closeManual();
+    from = from || cmt;
     man = el("div", "man cp");
     man.setAttribute("role", "group");
     man.setAttribute("aria-label", label);
     w.appendChild(man);
-    cmt.setAttribute("aria-expanded", "true");
-    opener = cmt;
+    from.setAttribute("aria-expanded", "true");
+    opener = from;
     return man;
   }
   function button(text, cls, fn) {
@@ -701,6 +727,180 @@ try {
     addEventListener("resize", schedule);
     load();
     doc.addEventListener("visibilitychange", function () { if (doc.visibilityState === "visible") load(); });
+  }
+
+  // --- listen ---
+  // The audio version: a model describes the page (its text, pictures and
+  // design) and the server reads that aloud. The player lives outside the
+  // panel, so closing the panel doesn't stop playback.
+  var lstat = null, lpoll = 0, audioFor = "", hold = el("div");
+  hold.hidden = true;
+  var player = doc.createElement("audio");
+  player.controls = true;
+  player.preload = "auto";
+  player.setAttribute("aria-label", "Audio version of the page");
+  hold.appendChild(player);
+  var speaking = false;
+  function stopListenPoll() { clearTimeout(lpoll); lpoll = 0; }
+  function lcall(method, path, body) { return request(D.listen + path, method, body); }
+  var stepText = { queued: "Waiting for another audio version to finish…", page: "Reading the page…",
+    script: "Writing the narration…", audio: "Recording the audio…" };
+  function mins(sec) {
+    var m = Math.floor(sec / 60), s = Math.round(sec % 60);
+    if (s === 60) { m++; s = 0; }
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+  function playing(on) {
+    if (!lsn) return;
+    lsn.className = on ? "ok" : "";
+  }
+  player.addEventListener("play", function () { playing(true); });
+  player.addEventListener("pause", function () { playing(false); });
+  player.addEventListener("ended", function () { playing(false); });
+  function mediaSession() {
+    try {
+      if (navigator.mediaSession && window.MediaMetadata) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: D.title, artist: "glim" });
+      }
+    } catch (e) {}
+  }
+  function loadAudio(r, err) {
+    var key = r.version + r.created;
+    if (audioFor === key) return;
+    audioFor = key;
+    // The query changes with each version, so a new one never comes from the cache.
+    fetch(D.listen + "/audio?v=" + encodeURIComponent(r.created), { headers: { "X-Glim-Bar": D.tok }, credentials: "omit", mode: "cors" }).then(function (res) {
+      if (!res.ok) throw new Error("The audio couldn't be loaded (" + res.status + ").");
+      return res.blob();
+    }).then(function (b) {
+      if (audioFor !== key) return;
+      if (player.src) URL.revokeObjectURL(player.src);
+      player.src = URL.createObjectURL(b);
+      mediaSession();
+    }, function (e) {
+      audioFor = "";
+      err.textContent = e.message;
+      err.hidden = false;
+    });
+  }
+  function speak(r, b) {
+    var ss = window.speechSynthesis;
+    if (!ss) return;
+    if (speaking) { ss.cancel(); speaking = false; b.textContent = "Read aloud"; playing(false); return; }
+    var u = new SpeechSynthesisUtterance(r.narration);
+    if (r.language) u.lang = r.language;
+    u.onend = u.onerror = function () { speaking = false; b.textContent = "Read aloud"; playing(false); };
+    speaking = true;
+    b.textContent = "Stop";
+    playing(true);
+    ss.speak(u);
+  }
+  function start(again) {
+    lstat = { state: "working", step: "queued", result: lstat && lstat.result, speech: lstat && lstat.speech };
+    renderListen();
+    lcall("POST", "", again ? { again: true } : null).then(function (st) {
+      lstat = st;
+      renderListen();
+    }, function (e) {
+      lstat = { state: "failed", error: e.message, result: lstat && lstat.result };
+      renderListen();
+    });
+  }
+  var lpanel = null;
+  function renderListen() {
+    if (!lpanel || man !== lpanel) return;
+    var p = lpanel;
+    p.textContent = "";
+    var hd = el("div", "hd");
+    hd.appendChild(el("span", "sp1", "Listen"));
+    p.appendChild(hd);
+    var st = lstat;
+    if (!st) { p.appendChild(el("p", "mu", "Loading…")); return; }
+    var r = st.result;
+    if (st.state === "working") {
+      var t = stepText[st.step] || "Working…";
+      // done is left out of the JSON while it is 0.
+      if (st.step === "audio" && st.total > 1) t = "Recording the audio, part " + Math.min((st.done || 0) + 1, st.total) + " of " + st.total + "…";
+      p.appendChild(el("p", "mu", t));
+      p.appendChild(el("p", "mu", "You can close this panel; it keeps going."));
+      stopListenPoll();
+      lpoll = setTimeout(refreshListen, 2000);
+      return;
+    }
+    if (st.state === "failed") {
+      p.appendChild(el("div", "er", st.error || "It didn't work."));
+      var ac0 = el("div", "ac");
+      ac0.appendChild(button("Try again", "pr", function () { start(true); }));
+      p.appendChild(ac0);
+      if (!r) return;
+    }
+    if (!r) {
+      p.appendChild(el("p", "mu", "Get a spoken walkthrough of this page: a model describes its text, pictures and design, and it's read aloud."));
+      var ac1 = el("div", "ac");
+      ac1.appendChild(button("Make the audio version", "pr", function () { start(false); }));
+      p.appendChild(ac1);
+      return;
+    }
+    if (st.stale) {
+      var ac2 = el("div", "ac");
+      ac2.appendChild(el("span", "mu", "The page changed since this was made."));
+      ac2.appendChild(button("Update", "pr", function () { start(true); }));
+      p.appendChild(ac2);
+    }
+    var err = el("div", "er");
+    err.hidden = true;
+    if (r.audio) {
+      p.appendChild(player);
+      p.appendChild(err);
+      loadAudio(r, err);
+      var rt = el("div", "ac rt");
+      [1, 1.25, 1.5, 2].forEach(function (v) {
+        var b = button(v + "×", player.playbackRate === v ? "on" : "", function () {
+          player.playbackRate = v;
+          renderListen();
+        });
+        b.setAttribute("aria-label", "Speed " + v + "×");
+        rt.appendChild(b);
+      });
+      p.appendChild(rt);
+    } else if (window.speechSynthesis) {
+      var ac3 = el("div", "ac");
+      ac3.appendChild(button(speaking ? "Stop" : "Read aloud", "pr", function (b) { speak(r, b); }));
+      p.appendChild(ac3);
+    }
+    if (r.truncated) p.appendChild(el("div", "mu", "The model stopped before the end of the page, so the audio ends early."));
+    p.appendChild(el("div", "sum", r.summary));
+    var meta = [];
+    if (r.seconds) meta.push(mins(r.seconds));
+    meta.push(ago(r.created));
+    if (r.model) meta.push(r.model);
+    if (!r.rendered) meta.push("read from the HTML, without screenshots");
+    p.appendChild(el("div", "mt", meta.join(" · ")));
+    var det = doc.createElement("details");
+    det.appendChild(el("summary", "", "Transcript"));
+    det.appendChild(el("div", "trn", r.narration));
+    p.appendChild(det);
+    var ac4 = el("div", "ac");
+    if (!st.stale) ac4.appendChild(button("Make it again", "", function () { start(true); }));
+    p.appendChild(ac4);
+  }
+  function refreshListen() {
+    lcall("GET", "").then(function (st) { lstat = st; }, function (e) {
+      lstat = { state: "failed", error: e.message, result: lstat && lstat.result };
+    }).then(renderListen);
+  }
+  function openListen() {
+    lpanel = panel("Listen", lsn);
+    lpanel.className += " ls";
+    renderListen();
+    refreshListen();
+  }
+  if (lsn) {
+    sh.appendChild(hold);
+    lsn.addEventListener("click", function () {
+      if (lsn.getAttribute("aria-expanded") === "true") closeManual();
+      else openListen();
+    });
   }
 
   function set(collapsed) {

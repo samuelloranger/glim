@@ -36,10 +36,10 @@ func PreviewHandlerWith(st *store.Store, views *Views) http.Handler {
 // visitor holding its unlock cookie. A nil unlock leaves locked previews
 // permanently locked (fail closed).
 func PreviewHandlerFull(st *store.Store, views *Views, unlock *Unlock) http.Handler {
-	return previewHandler(st, views, unlock, false, true, true)
+	return previewHandler(st, views, unlock, false, true, true, false)
 }
 
-func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFetch, header bool) http.Handler {
+func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFetch, header, listen bool) http.Handler {
 	fsys := noListFS{http.Dir(st.Root)}
 	files := http.FileServer(fsys)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +116,7 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 				body = liveScript(base + LivePathPrefix + slug + "?v=" + v)
 			}
 			if bar {
-				body += ownerBar(m, slug, base, views.barToken(r, slug))
+				body += ownerBar(m, slug, base, views.barToken(r, slug), listen)
 			}
 			have := declaredMeta(doc)
 			return viewportTag(have) + cardTags(m, slug, base+r.URL.EscapedPath(), base+ogImagePath, now, have), body
@@ -215,11 +215,14 @@ type Options struct {
 	// NoHeader turns off the owner-only bar injected into preview pages (on
 	// by default).
 	NoHeader bool
-	Live     *Live // optional: overrides the default stream settings (tests)
+	// Listen adds the Listen button to the glim bar (the server has a
+	// model configured to describe previews).
+	Listen bool
+	Live   *Live // optional: overrides the default stream settings (tests)
 }
 
 func NewRouter(o Options) http.Handler {
-	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload, !o.NoSelfFetch, !o.NoHeader)
+	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload, !o.NoSelfFetch, !o.NoHeader, o.Listen)
 	live := o.Live
 	if o.LiveReload && live == nil {
 		live = NewLive(o.Store)

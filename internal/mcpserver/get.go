@@ -140,10 +140,20 @@ func isBinaryName(name string) bool {
 }
 
 // listFiles returns the regular files of a preview other than index.html and
-// the manifest, as sorted slash-separated relative paths, capped at maxFileList.
+// glim's own dot-prefixed files and folders (the manifest, the Listen
+// folder), as sorted slash-separated relative paths, capped at maxFileList.
 func listFiles(dir string) (files []string, truncated bool) {
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !d.Type().IsRegular() {
+		if err != nil {
+			return nil
+		}
+		if p != dir && strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() || !d.Type().IsRegular() {
 			return nil
 		}
 		rel, err := filepath.Rel(dir, p)

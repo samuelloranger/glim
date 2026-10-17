@@ -13,10 +13,11 @@ import { createLive } from "../lib/live";
 import { displayTitle } from "../lib/preview";
 import { formatLeft } from "../lib/time";
 import { createToasts } from "../lib/toasts";
-import type { Preview, User } from "../lib/types";
+import type { Features, Preview, User } from "../lib/types";
 import { AccountPanel } from "./AccountPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Filters } from "./Filters";
+import { ListenDialog } from "./ListenDialog";
 import { LockDialog } from "./LockDialog";
 import { PreviewCard } from "./PreviewCard";
 import { ShareDialog } from "./ShareDialog";
@@ -25,6 +26,7 @@ import { ToastList } from "./Toasts";
 
 export function Dashboard(props: {
   user: User;
+  features: Features;
   onSignOut: () => void;
   onSessionEnded: () => void;
 }) {
@@ -36,6 +38,7 @@ export function Dashboard(props: {
   const [confirming, setConfirming] = createSignal<Preview | null>(null);
   const [locking, setLocking] = createSignal<Preview | null>(null);
   const [sharing, setSharing] = createSignal<Preview | null>(null);
+  const [listening, setListening] = createSignal<Preview | null>(null);
   const [ready, setReady] = createSignal(false);
   const [accountOpen, setAccountOpen] = createSignal(false);
 
@@ -173,6 +176,7 @@ export function Dashboard(props: {
                     onRemove={() => setConfirming(p)}
                     onCopy={() => void copy(p)}
                     onShare={() => setSharing(p)}
+                    onListen={props.features.listen ? () => setListening(p) : undefined}
                     onLock={() => setLocking(p)}
                     onUnlock={() => void actions.unlock(p.name)}
                   />
@@ -198,6 +202,12 @@ export function Dashboard(props: {
         preview={sharing()}
         title={sharing() ? displayTitle(sharing() as Preview) : ""}
         onClose={() => setSharing(null)}
+      />
+      <ListenDialog
+        preview={listening()}
+        title={listening() ? displayTitle(listening() as Preview) : ""}
+        onClose={() => setListening(null)}
+        onReopen={(name) => setListening(live.state.previews.find((p) => p.name === name) ?? null)}
       />
       <LockDialog
         open={locking() !== null}

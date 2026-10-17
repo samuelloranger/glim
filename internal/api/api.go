@@ -16,16 +16,20 @@ import (
 	"time"
 
 	"github.com/samuelloranger/glim/internal/auth"
+	"github.com/samuelloranger/glim/internal/listen"
 	"github.com/samuelloranger/glim/internal/store"
 )
 
 const cookieName = "glim_session"
 
 type Deps struct {
-	Store         *store.Store
-	Auth          *auth.DB
-	Limiter       *auth.Limiter
-	Hub           *Hub
+	Store   *store.Store
+	Auth    *auth.DB
+	Limiter *auth.Limiter
+	Hub     *Hub
+	// Listen makes audio versions of previews; nil or unconfigured turns
+	// the feature off.
+	Listen        *listen.Service
 	SecureCookies bool
 	// PublicHost is the host of the configured public domain (e.g.
 	// "glim.example.com"). An Origin on that host is always same-origin, even
@@ -92,6 +96,9 @@ func (s *Server) routes() {
 	m.Handle("POST /_glim/api/previews/{name}/lock", s.authed(s.postLock))
 	m.Handle("POST /_glim/api/previews/{name}/unlock", s.authed(s.postUnlock))
 	m.Handle("GET /_glim/api/previews/{name}/qr.svg", s.authed(s.getQR))
+	m.Handle("GET /_glim/api/previews/{name}/listen", s.authed(s.getListen))
+	m.Handle("POST /_glim/api/previews/{name}/listen", s.authed(s.postListen))
+	m.Handle("GET /_glim/api/previews/{name}/listen/audio", s.authed(s.getListenAudio))
 	m.Handle("DELETE /_glim/api/previews/{name}", s.authed(s.deletePreview))
 	m.Handle("GET /_glim/api/events", s.authed(s.getEvents))
 	m.Handle("GET /_glim/api/users", s.authed(s.getUsers))
@@ -108,6 +115,12 @@ func (s *Server) routes() {
 	m.Handle("POST /_glim/api/bar/{name}/comments", s.barAuthed(s.postBarComment))
 	m.Handle("PATCH /_glim/api/bar/{name}/comments/{id}", s.barAuthed(s.patchBarComment))
 	m.Handle("DELETE /_glim/api/bar/{name}/comments/{id}", s.barAuthed(s.deleteBarComment))
+	// The glim bar's Listen panel.
+	m.HandleFunc("OPTIONS /_glim/api/bar/{name}/listen", s.barPreflight)
+	m.HandleFunc("OPTIONS /_glim/api/bar/{name}/listen/audio", s.barPreflight)
+	m.Handle("GET /_glim/api/bar/{name}/listen", s.barAuthed(s.getBarListen))
+	m.Handle("POST /_glim/api/bar/{name}/listen", s.barAuthed(s.postBarListen))
+	m.Handle("GET /_glim/api/bar/{name}/listen/audio", s.barAuthed(s.getBarListenAudio))
 	m.HandleFunc("/_glim/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not_found", "No such endpoint.")
 	})
