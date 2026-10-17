@@ -149,22 +149,48 @@ func TestDescribeFallsBack(t *testing.T) {
 }
 
 func TestPartialScript(t *testing.T) {
-	cut := "{\"language\": \"en\",\n \"summary\": \"Short sum.\",\n \"narration\": \"Goal. Move every screen. Finding F10: the button is unla"
-	sc := partialScript(cut)
-	if !sc.Truncated || sc.Language != "en" || sc.Summary != "Short sum." || sc.Narration != "Goal. Move every screen." {
+	ok := func(content string) Script {
+		t.Helper()
+		sc, err := partialScript(content)
+		if err != nil {
+			t.Fatalf("%q: %v", content, err)
+		}
+		if !sc.Truncated || strings.ContainsAny(sc.Narration, "{}\\") || strings.Contains(sc.Narration, `":`) {
+			t.Fatalf("%q: raw JSON or escapes in the narration: %+v", content, sc)
+		}
+		return sc
+	}
+	sc := ok("{\"language\": \"en\",\n \"summary\": \"Short sum.\",\n \"narration\": \"Goal. Move every screen. Finding F10: the button is unla")
+	if sc.Language != "en" || sc.Summary != "Short sum." || sc.Narration != "Goal. Move every screen." {
 		t.Fatalf("%+v", sc)
 	}
-	// Cut inside an escape sequence.
-	sc = partialScript(`{"narration": "One. Two \`)
-	if sc.Narration != "One." {
+	// A code fence or prose before the cut-off JSON.
+	for _, c := range []string{"```json\n{\"language\":\"en\",\"summary\":\"Hi.\",\"narration\":\"One. Two. Thr",
+		"Here you go: {\"language\":\"en\",\"summary\":\"Hi.\",\"narration\":\"One. Two. Thr"} {
+		if sc := ok(c); sc.Narration != "One. Two." || sc.Summary != "Hi." {
+			t.Fatalf("%q: %+v", c, sc)
+		}
+	}
+	// Cut inside an escape sequence: a lone backslash, or a short \u.
+	if sc := ok(`{"narration": "One. Two \`); sc.Narration != "One." {
 		t.Fatalf("dangling escape: %+v", sc)
 	}
+	if sc := ok(`{"narration": "One. Two \"q\" three. Four \u00e`); sc.Narration != "One. Two \"q\" three." {
+		t.Fatalf("short \\u: %+v", sc)
+	}
+	// A key's name appearing first as a value.
+	if sc := ok(`{"language":"summary","summary":"Real.","narration":"Body. Cut`); sc.Summary != "Real." || sc.Language != "summary" {
+		t.Fatalf("key as value: %+v", sc)
+	}
 	// A reply that parses but hit the limit anyway is only flagged.
-	sc = partialScript(`{"summary": "S.", "narration": "All of it."}`)
-	if !sc.Truncated || sc.Narration != "All of it." {
+	if sc := ok(`{"summary": "S.", "narration": "All of it."}`); sc.Narration != "All of it." {
 		t.Fatalf("complete: %+v", sc)
 	}
-	if b := wordBudget(4096); b < 1500 || b > 1500 {
+	// Cut before any narration: an error, never the raw reply.
+	if _, err := partialScript(`{"language": "en", "summ`); err == nil {
+		t.Fatal("no narration accepted")
+	}
+	if b := wordBudget(4096); b != 1500 {
 		t.Fatalf("budget(4096) = %d", b)
 	}
 	if b := wordBudget(2048); b != 965 {

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -64,7 +65,7 @@ The narration:
 
 // Describe asks the model at e for the summary and narration of p, within
 // maxTokens of output (0 selects DefaultMaxTokens). Providers differ in what
-// they accept, so on a 4xx it retries: with max_tokens instead of
+// they accept, so on a 400 or 422 it retries: with max_tokens instead of
 // max_completion_tokens, then without JSON mode, without a token limit, and
 // last without the images, so a text-only model still works.
 func Describe(ctx context.Context, client *http.Client, e Endpoint, p Page, instructions string, maxTokens int) (Script, error) {
@@ -84,15 +85,16 @@ func Describe(ctx context.Context, client *http.Client, e Endpoint, p Page, inst
 	for _, a := range attempts {
 		content, finish, err := chat(ctx, client, e, request(e.Model, p, instructions, maxTokens, a))
 		if err == nil {
-			sc, err := parseScript(content)
 			if finish == "length" {
-				sc, err = partialScript(content), nil
+				return partialScript(content)
 			}
-			return sc, err
+			return parseScript(content)
 		}
 		lastErr = err
 		var he *httpError
-		if !errors.As(err, &he) || he.status < 400 || he.status >= 500 || he.status == 401 || he.status == 403 || he.status == 429 {
+		// Only a rejected request shape is worth another shape; anything else
+		// (auth, not found, too large, rate limit, outage) fails the same way.
+		if !errors.As(err, &he) || (he.status != 400 && he.status != 422) {
 			return Script{}, err
 		}
 	}
@@ -302,6 +304,19 @@ func Redact(u string) string {
 // it, raw line breaks inside its strings, and the fields split across an
 // array of objects; a reply that isn't JSON at all is used as the narration.
 func parseScript(content string) (Script, error) {
+	if sc, ok := jsonScript(content); ok {
+		return sc, nil
+	}
+	s := strings.Trim(strings.TrimSpace(content), "`")
+	if s == "" {
+		return Script{}, errors.New("The model returned an empty answer")
+	}
+	return Script{Summary: firstSentences(s, 3), Narration: s}, nil
+}
+
+// jsonScript finds and decodes the model's JSON object (or array of
+// objects) inside content.
+func jsonScript(content string) (Script, bool) {
 	s := strings.TrimSpace(content)
 	var cands []string
 	if i, j := strings.Index(s, "{"), strings.LastIndex(s, "}"); i >= 0 && j > i {
@@ -313,15 +328,11 @@ func parseScript(content string) (Script, error) {
 	for _, c := range cands {
 		for _, b := range [][]byte{[]byte(c), escapeControls([]byte(c))} {
 			if sc, ok := decodeScript(b); ok {
-				return sc, nil
+				return sc, true
 			}
 		}
 	}
-	s = strings.Trim(s, "`")
-	if s == "" {
-		return Script{}, errors.New("The model returned an empty answer")
-	}
-	return Script{Summary: firstSentences(s, 3), Narration: s}, nil
+	return Script{}, false
 }
 
 // decodeScript reads one object, or an array of objects whose fields it
@@ -353,39 +364,58 @@ func decodeScript(b []byte) (Script, bool) {
 
 // partialScript salvages a reply cut off by the output limit: the complete
 // fields it has, and the narration up to where it stopped, ended at its last
-// full sentence. It never returns the raw JSON as the narration.
-func partialScript(content string) Script {
-	sc := Script{Truncated: true}
-	if full, err := parseScript(content); err == nil && !strings.HasPrefix(strings.TrimSpace(full.Narration), "{") &&
-		!strings.HasPrefix(strings.TrimSpace(full.Narration), "[") {
+// full sentence. It never uses the raw reply as the narration.
+func partialScript(content string) (Script, error) {
+	if full, ok := jsonScript(content); ok {
 		full.Truncated = true
-		return full
+		return full, nil
 	}
+	sc := Script{Truncated: true}
 	sc.Language, _ = jsonField(content, "language")
 	sc.Summary, _ = jsonField(content, "summary")
 	sc.Narration, _ = jsonField(content, "narration")
 	if cut := lastSentenceEnd(sc.Narration); cut > 0 {
 		sc.Narration = sc.Narration[:cut]
 	}
+	if sc.Narration == "" {
+		return Script{}, errors.New("The model's reply hit its output limit before the narration. Raise llm_max_tokens")
+	}
 	if sc.Summary == "" {
 		sc.Summary = firstSentences(sc.Narration, 3)
 	}
-	return sc
+	return sc, nil
 }
 
-// jsonField reads the string value of key from possibly unfinished JSON; ok
-// is false when the value is cut off before its closing quote.
+// jsonField reads the string value of key from possibly unfinished JSON,
+// skipping matches of the key's text that aren't a key; ok is false when the
+// value is cut off before its closing quote.
 func jsonField(s, key string) (string, bool) {
-	i := strings.Index(s, `"`+key+`"`)
-	if i < 0 {
-		return "", false
+	for from := 0; ; {
+		i := strings.Index(s[from:], `"`+key+`"`)
+		if i < 0 {
+			return "", false
+		}
+		i += from
+		from = i + 1
+		t := strings.TrimLeft(s[i+len(key)+2:], " \t\r\n")
+		if !strings.HasPrefix(t, ":") {
+			continue
+		}
+		t = strings.TrimLeft(t[1:], " \t\r\n")
+		if !strings.HasPrefix(t, `"`) {
+			continue
+		}
+		return stringValue(t[1:])
 	}
-	rest := s[i+len(key)+2:]
-	j := strings.Index(rest, `"`)
-	if j < 0 || strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rest[:j]), ":")) != "" {
-		return "", false
-	}
-	rest = rest[j+1:]
+}
+
+// partialEscape matches an escape sequence cut off at the end of a string: a
+// lone backslash, or \u with fewer than four hex digits.
+var partialEscape = regexp.MustCompile(`(?:^|[^\\])(?:\\\\)*(\\(?:u[0-9a-fA-F]{0,3})?)$`)
+
+// stringValue decodes a JSON string body (after its opening quote) up to its
+// closing quote or, when cut off, to the end.
+func stringValue(rest string) (string, bool) {
 	end, closed := len(rest), false
 	for k := 0; k < len(rest); k++ {
 		if rest[k] == '\\' {
@@ -398,12 +428,14 @@ func jsonField(s, key string) (string, bool) {
 		}
 	}
 	raw := rest[:end]
-	if !closed && (len(raw)-len(strings.TrimRight(raw, `\`)))%2 == 1 {
-		raw = raw[:len(raw)-1] // a cut-off escape sequence
+	if !closed {
+		if m := partialEscape.FindStringSubmatchIndex(raw); m != nil {
+			raw = raw[:m[2]]
+		}
 	}
 	var v string
 	if json.Unmarshal(escapeControls([]byte(`"`+raw+`"`)), &v) != nil {
-		return strings.TrimSpace(raw), closed
+		return "", false // never speak undecoded escapes
 	}
 	return strings.TrimSpace(v), closed
 }

@@ -50,7 +50,7 @@ glim config --tts-url http://127.0.0.1:8880/v1 --tts-model some-tts-model \
 | --- | --- | --- |
 | `listen.llm_url` | _(none)_ | Base URL of an OpenAI-compatible API, ending where `/chat/completions` goes (usually `/v1`). Listen is off without it. |
 | `listen.llm_model` | _(none)_ | Model that describes the page. Use one that accepts images; a text-only model still works from the page text. |
-| `listen.llm_max_tokens` | `4096` | The model's output limit, sent as `max_completion_tokens` (or `max_tokens` if the provider refuses that). The narration is a condensed reading of about a third of the page, and its word budget follows from this limit (at most 1500 words). Keep it within your model's limit; a reply that still hits it is kept up to its last full sentence and marked as cut off. |
+| `listen.llm_max_tokens` | `4096` | The model's output limit, sent as `max_completion_tokens` (or `max_tokens` if the provider refuses that). The narration is a condensed reading of about a third of the page, and its word budget follows from this limit (at most 1500 words). Keep it within your model's limit; a reply that still hits it is kept up to its last full sentence and marked as cut off. A reasoning model spends part of this limit on its hidden reasoning, so give it more. Languages that take more tokens per word than English can also need more. |
 | `listen.tts_url` | _(none)_ | Base URL of an OpenAI-compatible speech API. Without it glim writes the narration only, and the bar and the dashboard offer **Read aloud** with the device's own voice. |
 | `listen.tts_model` | _(none)_ | Speech model. |
 | `listen.tts_voice` | _(none)_ | Default voice. Omitted from the request when unset. |
