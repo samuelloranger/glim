@@ -65,7 +65,7 @@ The narration:
 
 // Describe asks the model at e for the summary and narration of p, within
 // maxTokens of output (0 selects DefaultMaxTokens). Providers differ in what
-// they accept, so on a 400 or 422 it retries: with max_tokens instead of
+// they accept, so on a 400, 413, 415 or 422 it retries: with max_tokens instead of
 // max_completion_tokens, then without JSON mode, without a token limit, and
 // last without the images, so a text-only model still works.
 func Describe(ctx context.Context, client *http.Client, e Endpoint, p Page, instructions string, maxTokens int) (Script, error) {
@@ -92,9 +92,10 @@ func Describe(ctx context.Context, client *http.Client, e Endpoint, p Page, inst
 		}
 		lastErr = err
 		var he *httpError
-		// Only a rejected request shape is worth another shape; anything else
-		// (auth, not found, too large, rate limit, outage) fails the same way.
-		if !errors.As(err, &he) || (he.status != 400 && he.status != 422) {
+		// Only a rejected request shape is worth another shape: 400 and 422
+		// for a parameter, 413 and 415 for the images the last shape drops.
+		// Anything else (auth, not found, rate limit, outage) fails the same way.
+		if !errors.As(err, &he) || (he.status != 400 && he.status != 422 && he.status != 413 && he.status != 415) {
 			return Script{}, err
 		}
 	}
