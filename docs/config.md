@@ -55,7 +55,7 @@ glim config --tts-url http://127.0.0.1:8880/v1 --tts-model some-tts-model \
 | `listen.tts_model` | _(none)_ | Speech model. |
 | `listen.tts_voice` | _(none)_ | Default voice. Omitted from the request when unset. |
 | `listen.tts_voices` | _(none)_ | Voice per language, keyed by the part of the page's language code before any `-` (`fr` covers `fr-CA`). `--tts-voices -` clears it. |
-| `listen.chrome` | _(search PATH)_ | Browser used to render the page for screenshots: a path or a command name. `off` never uses one. Without a browser, glim reads the page's HTML and its image files instead (scripts don't run). The dashboard's thumbnails use the same browser and, without one, show each preview in a frame instead. |
+| `listen.chrome` | _(search PATH)_ | Browser used to render the page for screenshots: a path or a command name. The search tries `chrome-headless-shell` first (see [Browser](#browser)), then Google Chrome and Chromium. `off` never uses one. Without a browser, glim reads the page's HTML and its image files instead (scripts don't run). The dashboard's thumbnails use the same browser and, without one, show each preview in a frame instead. |
 | `listen.instructions` | _(none)_ | Extra instructions appended to the prompt, such as `Keep it under five minutes.` |
 
 API keys are never stored in the config file. Set `GLIM_LLM_API_KEY` and
@@ -67,6 +67,22 @@ other key can also be set from the environment: `GLIM_LLM_URL`,
 
 `glim config` shows whether Listen is on, which endpoints it uses, whether each
 key is set and which browser it found. `glim serve` logs the same at startup.
+
+### Browser
+
+Screenshots work with any Chrome or Chromium. The lightest choice is
+`chrome-headless-shell`, the automation build from Chrome for Testing: it
+starts faster and uses less memory than the full browser. Install it with
+
+```sh
+npx @puppeteer/browsers install chrome-headless-shell@stable --path ~/.local/share/chrome-for-testing
+```
+
+then put the printed binary on the `PATH` of `glim serve`, or set its full path
+with `glim config --chrome PATH`. It doesn't update itself, so run the install
+again from time to time: it renders whatever the previews contain, so keep it
+current. A systemd user service usually has a shorter `PATH` than your shell
+(often without `~/.local/bin`), which is when the full path is needed.
 
 What gets sent: the page's visible text (up to 60 KB), up to five pictures
 (screenshots from top to bottom, then close-ups of its largest images, charts

@@ -32,11 +32,13 @@ const (
 	settle    = 1500 * time.Millisecond
 )
 
-// chromeNames are tried in order. Google Chrome comes first: on Ubuntu,
-// chromium and chromium-browser are often stubs for a snap package that can't
-// be driven headless from a service.
+// chromeNames are tried in order. chrome-headless-shell, Chrome for Testing's
+// automation build, comes first: it starts faster and uses less memory than a
+// full browser. Google Chrome is next: on Ubuntu, chromium and
+// chromium-browser are often stubs for a snap package that can't be driven
+// headless from a service.
 var chromeNames = []string{
-	"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "headless-shell",
+	"chrome-headless-shell", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "headless-shell",
 	"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 	"/Applications/Chromium.app/Contents/MacOS/Chromium",
 }
