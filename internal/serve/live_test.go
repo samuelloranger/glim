@@ -211,8 +211,12 @@ func TestLiveScriptNotInDashboardThumbnails(t *testing.T) {
 		if c.dest != "" {
 			hdr["Sec-Fetch-Dest"], hdr["Sec-Fetch-Site"] = c.dest, c.site
 		}
-		if got := strings.Contains(do(h, "/demo-1234/", hdr).Body.String(), "EventSource"); got != c.want {
+		rec := do(h, "/demo-1234/", hdr)
+		if got := strings.Contains(rec.Body.String(), "EventSource"); got != c.want {
 			t.Errorf("dest %q site %q: live script = %v, want %v", c.dest, c.site, got, c.want)
+		}
+		if v := strings.Join(rec.Header().Values("Vary"), ", "); !strings.Contains(v, "Sec-Fetch-Dest, Sec-Fetch-Site") {
+			t.Errorf("dest %q site %q: Vary %q lacks the fetch metadata headers", c.dest, c.site, v)
 		}
 	}
 }

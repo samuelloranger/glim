@@ -140,8 +140,9 @@ export function AccountPanel(props: {
           </Show>
           <Show when={push() === "no-service"}>
             <p class="help">
-              The browser's push service refused the subscription. In Brave, turn on "Use Google
-              services for push messaging" in brave://settings/privacy, then try again.
+              The browser's push service refused the subscription. It may be turned off in the
+              browser or blocked by the network. In Brave, turn on "Use Google services for push
+              messaging" in brave://settings/privacy, then try again.
             </p>
           </Show>
           <label class="toggle">
