@@ -659,7 +659,7 @@ func newListen(l config.Listen, st *store.Store) *listen.Service {
 func newThumbs(chrome string, st *store.Store) *thumb.Service {
 	path := listen.FindChrome(chrome)
 	if path != "" {
-		log.Printf("thumbnails: screenshots with %s", path)
+		log.Printf("thumbnails: screenshots with %s", listen.DescribeChrome(path))
 	} else {
 		log.Printf("thumbnails: no browser, so the dashboard frames previews instead")
 	}
