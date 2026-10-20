@@ -138,6 +138,12 @@ export function AccountPanel(props: {
               then reload.
             </p>
           </Show>
+          <Show when={push() === "no-service"}>
+            <p class="help">
+              The browser's push service refused the subscription. In Brave, turn on "Use Google
+              services for push messaging" in brave://settings/privacy, then try again.
+            </p>
+          </Show>
           <label class="toggle">
             <input
               type="checkbox"

@@ -111,7 +111,7 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 				now = st.Now()
 			}
 			body := ""
-			if live {
+			if live && wantsLive(r) {
 				v, _ := liveVersion(st, slug)
 				body = liveScript(base + LivePathPrefix + slug + "?v=" + v)
 			}

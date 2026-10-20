@@ -1,6 +1,7 @@
 import type { Api } from "./api";
 
-export type PushState = "unsupported" | "denied" | "off" | "on";
+/** "no-service": the browser has push but its push service refused to subscribe. */
+export type PushState = "unsupported" | "denied" | "no-service" | "off" | "on";
 
 /** The browser surface push needs; injectable so the logic is testable. */
 export interface PushEnv {
@@ -63,12 +64,20 @@ export async function enablePush(env: PushEnv, api: PushApi): Promise<PushState>
   const reg = await env.registration();
   if (!reg) return "unsupported";
   const { key } = await api.pushKey();
-  const sub =
-    (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToBytes(key),
-    }));
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    try {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToBytes(key),
+      });
+    } catch (e) {
+      // Chromium rejects with AbortError when it cannot reach a push service,
+      // which is Brave's default until Google push messaging is turned on.
+      if (e instanceof Error && e.name === "AbortError") return "no-service";
+      throw e;
+    }
+  }
   const json = sub.toJSON();
   await api.pushSubscribe({
     endpoint: sub.endpoint,

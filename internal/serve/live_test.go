@@ -195,6 +195,28 @@ func TestLiveScriptInjection(t *testing.T) {
 	}
 }
 
+func TestLiveScriptNotInDashboardThumbnails(t *testing.T) {
+	h := NewRouter(Options{Store: newPreviewStore(t), LiveReload: true})
+	for _, c := range []struct {
+		dest, site string
+		want       bool
+	}{
+		{"document", "none", true},
+		{"document", "same-origin", true},
+		{"iframe", "cross-site", true},
+		{"iframe", "same-origin", false},
+		{"", "", true},
+	} {
+		hdr := map[string]string{}
+		if c.dest != "" {
+			hdr["Sec-Fetch-Dest"], hdr["Sec-Fetch-Site"] = c.dest, c.site
+		}
+		if got := strings.Contains(do(h, "/demo-1234/", hdr).Body.String(), "EventSource"); got != c.want {
+			t.Errorf("dest %q site %q: live script = %v, want %v", c.dest, c.site, got, c.want)
+		}
+	}
+}
+
 func TestLiveScriptNotInUnlockPage(t *testing.T) {
 	e := newLockEnv(t, false)
 	h := NewRouter(Options{Store: e.st, LiveReload: true, Unlock: &Unlock{}})

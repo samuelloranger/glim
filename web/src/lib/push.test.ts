@@ -22,6 +22,7 @@ function fakeEnv(opts: {
   permission?: NotificationPermission;
   ask?: NotificationPermission;
   existing?: ReturnType<typeof fakeSub> | null;
+  subscribeError?: Error;
 }) {
   let sub = opts.existing ?? null;
   const subscribeCalls: unknown[] = [];
@@ -35,6 +36,7 @@ function fakeEnv(opts: {
           getSubscription: async () => sub,
           subscribe: async (o: unknown) => {
             subscribeCalls.push(o);
+            if (opts.subscribeError) throw opts.subscribeError;
             sub = fakeSub();
             return sub;
           },
@@ -103,4 +105,18 @@ test("disable unsubscribes on the server and in the browser", async () => {
 
 test("urlBase64ToBytes decodes URL-safe base64", () => {
   expect(Array.from(urlBase64ToBytes("-_8"))).toEqual([251, 255]);
+});
+
+test("enable reports no-service when the push service refuses, and registers nothing", async () => {
+  const { env } = fakeEnv({
+    subscribeError: new DOMException("Registration failed - push service error", "AbortError"),
+  });
+  const { api, calls } = fakeApi();
+  expect(await enablePush(env, api)).toBe("no-service");
+  expect(calls.some((c) => c.url.endsWith("/push/subscribe"))).toBe(false);
+});
+
+test("enable rethrows other subscribe failures", async () => {
+  const { env } = fakeEnv({ subscribeError: new DOMException("bad key", "InvalidAccessError") });
+  await expect(enablePush(env, fakeApi().api)).rejects.toThrow("bad key");
 });
