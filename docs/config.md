@@ -68,6 +68,19 @@ other key can also be set from the environment: `GLIM_LLM_URL`,
 `glim config` shows whether Listen is on, which endpoints it uses, whether each
 key is set and which browser it found. `glim serve` logs the same at startup.
 
+What gets sent: the page's visible text (up to 60 KB), up to five pictures
+(screenshots from top to bottom, then close-ups of its largest images, charts
+and canvases) and the page title. Locked previews are sent too: only you can
+start a Listen, and it reads the files from disk.
+
+A long script is read in chunks of at most 4000 characters, split at paragraph
+and sentence ends, and joined into one MP3 with a header giving its true
+length, so players show the right duration and seek correctly. One audio
+version is made at a time; others wait their turn. The result lives in a
+hidden folder inside the preview and goes away when the preview expires, is
+removed or is republished (a republish marks the old one as changed, with an
+**Update** button).
+
 ### Browser
 
 Screenshots work with any Chrome or Chromium. The lightest choice is
@@ -81,21 +94,9 @@ npx @puppeteer/browsers install chrome-headless-shell@stable --path ~/.local/sha
 then put the printed binary on the `PATH` of `glim serve`, or set its full path
 with `glim config --chrome PATH`. It doesn't update itself, so run the install
 again from time to time: it renders whatever the previews contain, so keep it
-current. A systemd user service usually has a shorter `PATH` than your shell
+current. `glim serve` logs the browser's version at startup, and `glim config`
+shows it. A systemd user service usually has a shorter `PATH` than your shell
 (often without `~/.local/bin`), which is when the full path is needed.
-
-What gets sent: the page's visible text (up to 60 KB), up to five pictures
-(screenshots from top to bottom, then close-ups of its largest images, charts
-and canvases) and the page title. Locked previews are sent too: only you can
-start a Listen, and it reads the files from disk.
-
-A long script is read in chunks of at most 4000 characters, split at paragraph
-and sentence ends, and joined into one MP3 with a header giving its true
-length, so players show the right duration and seek correctly. One audio
-version is made at a time; others wait their turn. The result lives in a
-hidden folder inside the preview and goes away when the preview expires, is
-removed or is republished (a republish marks the old one as changed, with an
-**Update** button).
 
 ## How links are built
 

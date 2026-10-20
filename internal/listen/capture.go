@@ -63,6 +63,22 @@ func FindChrome(setting string) string {
 	return ""
 }
 
+// DescribeChrome returns the browser's path followed by the version it
+// reports, so logs show when a browser that doesn't update itself falls
+// behind. It returns the path alone when the browser doesn't answer.
+func DescribeChrome(path string) string {
+	if path == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, "--version").Output()
+	if v := strings.TrimSpace(string(out)); err == nil && v != "" {
+		return path + " (" + v + ")"
+	}
+	return path
+}
+
 // layout is what the page reports about itself after rendering.
 type layout struct {
 	Title   string   `json:"title"`
