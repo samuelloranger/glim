@@ -99,6 +99,10 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 		// The owner's copy of a page differs from everyone else's, so any
 		// cache must key HTML on the cookie, and must never keep the owner's.
 		bar := false
+		if live && isDocumentPath(r.URL.Path) {
+			// The dashboard's frames get no live-reload script (wantsLive).
+			w.Header().Add("Vary", "Sec-Fetch-Dest, Sec-Fetch-Site")
+		}
 		if header && !m.NoHeader && isDocumentPath(r.URL.Path) {
 			w.Header().Add("Vary", "Cookie")
 			if bar = wantsBar(r) && views.owner(r); bar {
@@ -111,7 +115,7 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 				now = st.Now()
 			}
 			body := ""
-			if live {
+			if live && wantsLive(r) {
 				v, _ := liveVersion(st, slug)
 				body = liveScript(base + LivePathPrefix + slug + "?v=" + v)
 			}

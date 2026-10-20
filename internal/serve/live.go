@@ -141,6 +141,17 @@ func (l *Live) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// wantsLive reports whether a page load should carry the live-reload script.
+// The dashboard frames every preview as a same-origin thumbnail and reloads
+// those frames itself when a preview is republished; a stream per thumbnail
+// would only use up the per-IP cap, so the dashboard's frames get none. Frames
+// a preview opens are cross-site, because the sandbox gives the preview an
+// opaque origin, so they keep live reload.
+func wantsLive(r *http.Request) bool {
+	return !strings.EqualFold(r.Header.Get("Sec-Fetch-Dest"), "iframe") ||
+		!strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "same-origin")
+}
+
 // liveScript is the snippet injected into a live preview's HTML pages. It is
 // an IIFE, so it leaks no globals, and it swallows every error so it can never
 // break the page it rides on.
