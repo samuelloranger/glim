@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -68,6 +67,10 @@ type Service struct {
 	b       *browser
 	users   int
 	stopper *time.Timer
+	// gen changes on every acquire and release, so an idle stop that fired
+	// before a later acquire doesn't close the browser under it.
+	gen    int
+	closed bool
 }
 
 type call struct {
@@ -125,7 +128,7 @@ func (s *Service) take(key, name, stamp string, c *call) {
 	s.sem <- struct{}{}
 	c.err = s.capture(name, stamp)
 	<-s.sem
-	if c.err != nil {
+	if c.err != nil && !errors.Is(c.err, os.ErrNotExist) {
 		s.logf("thumbnail: %s: %v", name, c.err)
 	}
 	close(c.done)
@@ -154,7 +157,7 @@ func (s *Service) capture(name, stamp string) error {
 	// A preview republished or removed while it rendered gets no file: the
 	// new version takes its own, and a removed folder must not come back.
 	if m, ok := s.st.Live(name); !ok || m.Stamp() != stamp {
-		return nil
+		return fmt.Errorf("version %s: %w", stamp, os.ErrNotExist)
 	}
 	dir := s.st.Dir(name)
 	if err := writeAtomic(dir, fileName(stamp), shot); err != nil {
@@ -176,6 +179,10 @@ func (s *Service) capture(name, stamp string) error {
 func (s *Service) acquire() (*browser, error) {
 	s.bmu.Lock()
 	defer s.bmu.Unlock()
+	if s.closed {
+		return nil, ErrOff
+	}
+	s.gen++
 	if s.stopper != nil {
 		s.stopper.Stop()
 		s.stopper = nil
@@ -203,20 +210,23 @@ func (s *Service) release() {
 	if s.users--; s.users > 0 {
 		return
 	}
+	s.gen++
+	gen := s.gen
 	s.stopper = time.AfterFunc(idle, func() {
 		s.bmu.Lock()
 		defer s.bmu.Unlock()
-		if s.users == 0 && s.b != nil {
+		if s.gen == gen && s.users == 0 && s.b != nil {
 			s.b.close()
 			s.b = nil
 		}
 	})
 }
 
-// Close stops the browser.
+// Close stops the browser; later captures fail with ErrOff.
 func (s *Service) Close() {
 	s.bmu.Lock()
 	defer s.bmu.Unlock()
+	s.closed = true
 	if s.stopper != nil {
 		s.stopper.Stop()
 	}
@@ -226,15 +236,13 @@ func (s *Service) Close() {
 	}
 }
 
-// browser is a headless Chrome and the loopback file server it renders
-// previews from, so pages load their own files without going through the
-// public address.
+// browser is a headless Chrome whose every request goes through its proxy.
 type browser struct {
 	ctx         context.Context
 	cancel      func()
 	cancelAlloc func()
+	proxy       *proxy
 	srv         *http.Server
-	base        string
 }
 
 func startBrowser(chrome, root string) (*browser, error) {
@@ -242,23 +250,8 @@ func startBrowser(chrome, root string) (*browser, error) {
 	if err != nil {
 		return nil, err
 	}
-	files := http.FileServer(http.Dir(root))
-	srv := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, seg := range strings.Split(r.URL.Path, "/") {
-			if strings.HasPrefix(seg, ".") {
-				http.NotFound(w, r)
-				return
-			}
-		}
-		h := w.Header()
-		h.Set("Content-Security-Policy", listen.SandboxCSP)
-		// The sandbox gives the page an opaque origin; let it fetch its own
-		// files, as the real server does.
-		if r.Header.Get("Origin") == "null" {
-			h.Set("Access-Control-Allow-Origin", "null")
-		}
-		files.ServeHTTP(w, r)
-	})}
+	px := newProxy(root)
+	srv := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: px}
 	go srv.Serve(ln)
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -266,6 +259,11 @@ func startBrowser(chrome, root string) (*browser, error) {
 		chromedp.WindowSize(Width, Height),
 		chromedp.Flag("hide-scrollbars", true),
 		chromedp.Flag("mute-audio", true),
+		chromedp.ProxyServer("http://"+ln.Addr().String()),
+		// Send loopback through the proxy too, which refuses it, and keep
+		// WebRTC from going around the proxy over UDP.
+		chromedp.Flag("proxy-bypass-list", "<-loopback>"),
+		chromedp.Flag("force-webrtc-ip-handling-policy", "disable_non_proxied_udp"),
 	)
 	if os.Geteuid() == 0 {
 		// Chrome refuses to start its sandbox as root (typical in a container).
@@ -273,9 +271,17 @@ func startBrowser(chrome, root string) (*browser, error) {
 	}
 	actx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	ctx, cancel := chromedp.NewContext(actx)
-	b := &browser{ctx: ctx, cancel: cancel, cancelAlloc: cancelAlloc, srv: srv,
-		base: "http://" + ln.Addr().String()}
-	if err := chromedp.Run(ctx); err != nil {
+	b := &browser{ctx: ctx, cancel: cancel, cancelAlloc: cancelAlloc, proxy: px, srv: srv}
+	// The first Run starts the browser. A context with a deadline would
+	// also bound the browser's life, so the start is timed out by hand.
+	started := make(chan error, 1)
+	go func() { started <- chromedp.Run(ctx) }()
+	select {
+	case err = <-started:
+	case <-time.After(timeout):
+		err = errors.New("timed out")
+	}
+	if err != nil {
 		b.close()
 		return nil, &listen.StartError{Browser: chrome, Err: err}
 	}
@@ -288,8 +294,10 @@ func (b *browser) close() {
 	b.srv.Close()
 }
 
-// shoot renders /name/ in a new tab and returns its first screen as JPEG.
+// shoot renders the preview in a new tab and returns its first screen as JPEG.
 func (b *browser) shoot(name string) ([]byte, error) {
+	host, remove := b.proxy.add(name)
+	defer remove()
 	tab, cancel := chromedp.NewContext(b.ctx)
 	defer cancel()
 	ctx, stop := context.WithTimeout(tab, timeout)
@@ -297,7 +305,7 @@ func (b *browser) shoot(name string) ([]byte, error) {
 	var out []byte
 	err := chromedp.Run(ctx,
 		chromedp.EmulateViewport(Width, Height),
-		chromedp.Navigate(b.base+"/"+name+"/"),
+		chromedp.Navigate("http://"+host+"/"+name+"/"),
 		chromedp.Sleep(settle),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			shot, err := page.CaptureScreenshot().

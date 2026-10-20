@@ -6,8 +6,11 @@ import (
 	"errors"
 	"image"
 	"image/jpeg"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -104,5 +107,54 @@ func TestUnknownPreview(t *testing.T) {
 	s := New(store.New(t.TempDir(), ""), "/bin/true", t.Logf)
 	if _, err := s.Path(context.Background(), "nope-1234"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("err = %v, want not exist", err)
+	}
+}
+
+// A captured page loads its own files but can't reach this machine or read
+// another preview, even by trying.
+func TestCapturedPageIsConfined(t *testing.T) {
+	s, st := service(t)
+	var hits atomic.Int32
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	}))
+	defer local.Close()
+	publish(t, st, "other-5678", "<p>locked content</p>")
+	src := t.TempDir()
+	must := func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// paint.js turns the page green; the probes turn it red if one succeeds.
+	must(os.WriteFile(filepath.Join(src, "paint.js"), []byte(`document.body.style.background = "rgb(0,200,0)"`), 0o644))
+	must(os.WriteFile(filepath.Join(src, "index.html"), []byte(`<!doctype html><body style="margin:0">
+<script src="paint.js"></script><script>
+function bad() { document.body.style.background = "rgb(220,0,0)" }
+fetch(`+"`"+local.URL+"/probe`"+`).then(bad, function () {});
+fetch("/other-5678/").then(function (r) { if (r.ok) bad() }, function () {});
+</script></body>`), 0o644))
+	if _, err := st.Publish(src, "", "", "", time.Hour, "mine-1234"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Path(context.Background(), "mine-1234")
+	var se *listen.StartError
+	if errors.As(err, &se) {
+		t.Skipf("the browser on this machine doesn't start: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(p)
+	img, err := jpeg.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, g, _, _ := img.At(10, 10).RGBA(); g>>8 < 150 || r>>8 > 60 {
+		t.Errorf("page is not green (r=%d g=%d): its own script didn't load or a probe got through", r>>8, g>>8)
+	}
+	if n := hits.Load(); n != 0 {
+		t.Errorf("a loopback server was reached %d times", n)
 	}
 }

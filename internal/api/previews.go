@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"os"
 
@@ -175,6 +176,12 @@ func (s *Server) getThumb(w http.ResponseWriter, r *http.Request, _ auth.Session
 		return
 	}
 	p, err := s.d.Thumbs.Path(r.Context(), name)
+	if errors.Is(err, os.ErrNotExist) {
+		// Republished or removed while it rendered; the dashboard asks
+		// again with the new version.
+		writeErr(w, http.StatusNotFound, "not_found", "That version of the preview is gone.")
+		return
+	}
 	if err != nil {
 		if r.Context().Err() == nil {
 			writeErr(w, http.StatusServiceUnavailable, "thumb_failed", "The preview couldn't be screenshotted.")

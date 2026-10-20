@@ -17,6 +17,12 @@ use the browser set by `listen.chrome` (see [Configuration](config.md)). When
 there is no browser, or it is set to `off`, the dashboard shows each preview in
 a frame instead, and a locked preview's frame shows the unlock form.
 
+While it is screenshotted, a preview's page can load its own files and anything
+on the public internet, such as scripts and fonts from a CDN. It can't reach the
+server's own machine, its local network, or any other preview: every request the
+browser makes goes through glim, which refuses loopback, private and link-local
+addresses.
+
 Password-protected previews carry a `locked` badge next to their title (the API's
 `locked` field). **Lock** asks for a
 password (twice) and protects the preview at once; **Unlock** removes the
