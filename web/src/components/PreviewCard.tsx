@@ -1,6 +1,6 @@
-import { createMemo, onSettled, Show, untrack } from "solid-js";
+import { createMemo, createSignal, onSettled, Show, untrack } from "solid-js";
 import type { Override } from "../lib/actions";
-import { displayTitle, thumbnailSrc } from "../lib/preview";
+import { displayTitle, shotSrc, thumbnailSrc } from "../lib/preview";
 import { EMBER_MS, formatLeft, formatSeen, lifeFraction } from "../lib/time";
 import type { Preview } from "../lib/types";
 import { ExtendMenu } from "./ExtendMenu";
@@ -15,6 +15,8 @@ export function PreviewCard(props: {
   gone?: boolean;
   now: number;
   arriving: boolean;
+  /** Show the server's screenshot instead of framing the preview. */
+  shots: boolean;
   onExtend: (ttl: string, label: string) => void;
   onPin: () => void;
   onUnpin: () => void;
@@ -37,6 +39,10 @@ export function PreviewCard(props: {
     () => props.override?.removed === true || props.gone === true || (!pinned() && leftMs() <= 0),
   );
   const href = () => `/${props.preview.name}/`;
+  // A screenshot the server couldn't take falls back to the frame until the
+  // preview is republished.
+  const shot = createMemo(() => shotSrc(props.preview));
+  const [failedShot, setFailedShot] = createSignal("");
   let windowEl: HTMLAnchorElement | undefined;
 
   onSettled(() => {
@@ -61,14 +67,28 @@ export function PreviewCard(props: {
         aria-label={`Open ${title()}`}
       >
         <span class="visually-hidden">Open {title()}</span>
-        <iframe
-          src={thumbnailSrc(props.preview)}
-          sandbox="allow-scripts"
-          loading="lazy"
-          tabindex="-1"
-          aria-hidden="true"
-          title={`Preview of ${title()}`}
-        />
+        <Show
+          when={props.shots && failedShot() !== shot()}
+          fallback={
+            <iframe
+              src={thumbnailSrc(props.preview)}
+              sandbox="allow-scripts"
+              loading="lazy"
+              tabindex="-1"
+              aria-hidden="true"
+              title={`Preview of ${title()}`}
+            />
+          }
+        >
+          <img
+            class="shot"
+            src={shot()}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={(e) => setFailedShot(e.currentTarget.getAttribute("src") ?? "")}
+          />
+        </Show>
       </a>
       <Lifeline
         fraction={lifeFraction(props.preview.created, expires(), props.now)}

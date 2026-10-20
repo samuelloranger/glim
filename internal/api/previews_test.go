@@ -1,11 +1,16 @@
 package api
 
 import (
+	"image/jpeg"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/samuelloranger/glim/internal/listen"
 	"github.com/samuelloranger/glim/internal/qrcode"
+	"github.com/samuelloranger/glim/internal/thumb"
 )
 
 func TestListPreviews(t *testing.T) {
@@ -125,5 +130,51 @@ func TestQRCodeOfAPreviewLink(t *testing.T) {
 	}
 	if rec := e.do("GET", "/_glim/api/previews/gone-0000/qr.svg", nil, &sess, nil); rec.Code != 404 {
 		t.Fatalf("missing qr = %d", rec.Code)
+	}
+}
+
+func TestThumbOffWithoutBrowser(t *testing.T) {
+	e := newEnv(t)
+	sess := e.signIn("me@example.com")
+	name := publishPreview(t, e.st, "Shot", time.Hour)
+	if rec := e.do("GET", "/_glim/api/previews/"+name+"/thumb.jpg", nil, &sess, nil); rec.Code != 404 {
+		t.Fatalf("thumb with no service = %d", rec.Code)
+	}
+	if rec := e.do("GET", "/_glim/api/session", nil, &sess, nil); strings.Contains(rec.Body.String(), `"thumbs":true`) {
+		t.Fatalf("session advertises thumbs: %s", rec.Body)
+	}
+}
+
+func TestThumbOfAPreview(t *testing.T) {
+	chrome := listen.FindChrome(os.Getenv("GLIM_CHROME"))
+	if chrome == "" {
+		t.Skip("no Chrome or Chromium on PATH")
+	}
+	var svc *thumb.Service
+	e := newEnvWith(t, func(d *Deps) {
+		svc = thumb.New(d.Store, chrome, t.Logf)
+		d.Thumbs = svc
+	})
+	t.Cleanup(svc.Close)
+	sess := e.signIn("me@example.com")
+	name := publishPreview(t, e.st, "Shot", time.Hour)
+	if rec := e.do("GET", "/_glim/api/previews/"+name+"/thumb.jpg", nil, nil, nil); rec.Code != 401 {
+		t.Fatalf("anonymous thumb = %d", rec.Code)
+	}
+	if rec := e.do("GET", "/_glim/api/session", nil, &sess, nil); !strings.Contains(rec.Body.String(), `"thumbs":true`) {
+		t.Fatalf("session doesn't advertise thumbs: %s", rec.Body)
+	}
+	rec := e.do("GET", "/_glim/api/previews/"+name+"/thumb.jpg", nil, &sess, nil)
+	if rec.Code == http.StatusServiceUnavailable {
+		t.Skipf("the browser on this machine doesn't render: %s", rec.Body)
+	}
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("thumb = %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Fatalf("cache-control %q", cc)
+	}
+	if _, err := jpeg.Decode(rec.Body); err != nil {
+		t.Fatal(err)
 	}
 }

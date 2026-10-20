@@ -30,6 +30,7 @@ import (
 	"github.com/samuelloranger/glim/internal/mcpserver"
 	"github.com/samuelloranger/glim/internal/serve"
 	"github.com/samuelloranger/glim/internal/store"
+	"github.com/samuelloranger/glim/internal/thumb"
 	"github.com/samuelloranger/glim/internal/web"
 	"golang.org/x/term"
 )
@@ -606,8 +607,10 @@ func cmdServe(args []string) error {
 	recorder := db.NewViewRecorder(hub.Poke)
 	defer recorder.Close()
 	lst := newListen(cfg.Listen, st)
+	thumbs := newThumbs(cfg.Listen.Chrome, st)
+	defer thumbs.Close()
 	apiSrv := api.New(api.Deps{
-		Store: st, Auth: db, Limiter: auth.NewLimiter(nil), Hub: hub, Listen: lst,
+		Store: st, Auth: db, Limiter: auth.NewLimiter(nil), Hub: hub, Listen: lst, Thumbs: thumbs,
 		SecureCookies: strings.HasPrefix(base, "https://"),
 		PublicHost:    publicHost(base),
 		Logf:          log.Printf,
@@ -651,6 +654,18 @@ func newListen(l config.Listen, st *store.Store) *listen.Service {
 	return listen.New(st, set, log.Printf)
 }
 
+// newThumbs builds the card screenshot service. It shares Listen's browser
+// setting, so "off" turns both off.
+func newThumbs(chrome string, st *store.Store) *thumb.Service {
+	path := listen.FindChrome(chrome)
+	if path != "" {
+		log.Printf("thumbnails: screenshots with %s", path)
+	} else {
+		log.Printf("thumbnails: no browser, so the dashboard frames previews instead")
+	}
+	return thumb.New(st, path, log.Printf)
+}
+
 func orDefault(s, def string) string {
 	if s == "" {
 		return def
@@ -686,7 +701,7 @@ func cmdConfig(args []string) error {
 	ttsModel := fs.String("tts-model", "", "Listen: speech model")
 	ttsVoice := fs.String("tts-voice", "", "Listen: default voice")
 	ttsVoices := fs.String("tts-voices", "", "Listen: voice per language, e.g. fr=voice1,en=voice2")
-	chrome := fs.String("chrome", "", "Listen: browser for screenshots (path or name), or off")
+	chrome := fs.String("chrome", "", "browser for Listen and dashboard screenshots (path or name), or off")
 	instructions := fs.String("listen-instructions", "", "Listen: extra instructions for the narration")
 	if err := fs.Parse(args); err != nil {
 		return err

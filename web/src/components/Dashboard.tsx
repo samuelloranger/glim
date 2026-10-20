@@ -176,6 +176,7 @@ export function Dashboard(props: {
                     onRemove={() => setConfirming(p)}
                     onCopy={() => void copy(p)}
                     onShare={() => setSharing(p)}
+                    shots={props.features.thumbs === true}
                     onListen={props.features.listen ? () => setListening(p) : undefined}
                     onLock={() => setLocking(p)}
                     onUnlock={() => void actions.unlock(p.name)}

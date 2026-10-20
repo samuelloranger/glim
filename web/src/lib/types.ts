@@ -26,7 +26,12 @@ export type User = { email: string; createdAt: string };
 
 /** Optional server features: Listen makes audio versions; Speech is false
  * when the server writes the narration but leaves reading it to the device. */
-export type Features = { listen: boolean; speech: boolean };
+export type Features = {
+  listen: boolean;
+  speech: boolean;
+  /** The server screenshots previews for the cards; otherwise they are framed. */
+  thumbs?: boolean;
+};
 
 export type SessionInfo = { user: User; csrf: string; features?: Features };
 

@@ -15,10 +15,12 @@ type featuresJSON struct {
 	// reads the narration with the device's voice).
 	Listen bool `json:"listen"`
 	Speech bool `json:"speech"`
+	// Thumbs is true when the server screenshots previews for the cards.
+	Thumbs bool `json:"thumbs"`
 }
 
 func (s *Server) features() featuresJSON {
-	return featuresJSON{Listen: s.d.Listen.Enabled(), Speech: s.d.Listen.Speech()}
+	return featuresJSON{Listen: s.d.Listen.Enabled(), Speech: s.d.Listen.Speech(), Thumbs: s.d.Thumbs.Enabled()}
 }
 
 func (s *Server) getListen(w http.ResponseWriter, r *http.Request, _ auth.Session) {

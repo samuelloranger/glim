@@ -61,8 +61,10 @@ type Listen struct {
 	TTSVoices map[string]string `json:"tts_voices,omitempty"`
 	// TTSKey is filled from GLIM_TTS_API_KEY and never saved.
 	TTSKey string `json:"-"`
-	// Chrome is the browser used to screenshot the page; empty finds one on
-	// PATH, "off" never uses one (text and image files only).
+	// Chrome is the browser used to screenshot the page, for Listen and for
+	// the dashboard's thumbnails; empty finds one on PATH, "off" never uses
+	// one (Listen reads text and image files only, and the dashboard frames
+	// the previews).
 	Chrome string `json:"chrome,omitempty"`
 	// Instructions are appended to the prompt, e.g. "Keep it under 5 minutes."
 	Instructions string `json:"instructions,omitempty"`
