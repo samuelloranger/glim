@@ -646,7 +646,7 @@ func newListen(l config.Listen, st *store.Store) *listen.Service {
 			log.Printf("listen: no tts_url, so clients read the narration with the device's voice")
 		}
 		if set.Chrome != "" {
-			log.Printf("listen: screenshots with %s", set.Chrome)
+			log.Printf("listen: screenshots with %s", listen.DescribeChrome(set.Chrome))
 		} else {
 			log.Printf("listen: no browser, so pages are read from their HTML and image files")
 		}
@@ -659,7 +659,7 @@ func newListen(l config.Listen, st *store.Store) *listen.Service {
 func newThumbs(chrome string, st *store.Store) *thumb.Service {
 	path := listen.FindChrome(chrome)
 	if path != "" {
-		log.Printf("thumbnails: screenshots with %s", path)
+		log.Printf("thumbnails: screenshots with %s", listen.DescribeChrome(path))
 	} else {
 		log.Printf("thumbnails: no browser, so the dashboard frames previews instead")
 	}
@@ -816,7 +816,7 @@ func printListen(l config.Listen) {
 			fmt.Printf("  voice %s:  %s\n", k, l.TTSVoices[k])
 		}
 	}
-	chrome := listen.FindChrome(l.Chrome)
+	chrome := listen.DescribeChrome(listen.FindChrome(l.Chrome))
 	if chrome == "" {
 		chrome = "none (pages are read from their HTML)"
 	}

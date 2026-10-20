@@ -125,3 +125,20 @@ func labels(imgs []Image) []string {
 	}
 	return out
 }
+
+func TestDescribeChrome(t *testing.T) {
+	if got := DescribeChrome(""); got != "" {
+		t.Errorf("no browser = %q", got)
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "chrome")
+	must(t, os.WriteFile(fake, []byte("#!/bin/sh\necho 'Google Chrome for Testing 155.0.1.2'\n"), 0o755))
+	if got, want := DescribeChrome(fake), fake+" (Google Chrome for Testing 155.0.1.2)"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	broken := filepath.Join(dir, "broken")
+	must(t, os.WriteFile(broken, []byte("#!/bin/sh\nexit 1\n"), 0o755))
+	if got := DescribeChrome(broken); got != broken {
+		t.Errorf("failing browser = %q, want the path alone", got)
+	}
+}
