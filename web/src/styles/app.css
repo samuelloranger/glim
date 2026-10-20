@@ -398,6 +398,15 @@ select {
   pointer-events: none;
 }
 
+.window .shot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  background: #fff;
+}
+
 .window:hover {
   border-color: var(--iris);
 }

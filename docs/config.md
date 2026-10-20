@@ -55,7 +55,7 @@ glim config --tts-url http://127.0.0.1:8880/v1 --tts-model some-tts-model \
 | `listen.tts_model` | _(none)_ | Speech model. |
 | `listen.tts_voice` | _(none)_ | Default voice. Omitted from the request when unset. |
 | `listen.tts_voices` | _(none)_ | Voice per language, keyed by the part of the page's language code before any `-` (`fr` covers `fr-CA`). `--tts-voices -` clears it. |
-| `listen.chrome` | _(search PATH)_ | Browser used to render the page for screenshots: a path or a command name. `off` never uses one. Without a browser, glim reads the page's HTML and its image files instead (scripts don't run). |
+| `listen.chrome` | _(search PATH)_ | Browser used to render the page for screenshots: a path or a command name. `off` never uses one. Without a browser, glim reads the page's HTML and its image files instead (scripts don't run). The dashboard's thumbnails use the same browser and, without one, show each preview in a frame instead. |
 | `listen.instructions` | _(none)_ | Extra instructions appended to the prompt, such as `Keep it under five minutes.` |
 
 API keys are never stored in the config file. Set `GLIM_LLM_API_KEY` and

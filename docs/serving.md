@@ -61,12 +61,13 @@ the zoomed-out layout.
 ## Live reload
 
 Republishing a preview under the same name (`glim <file> --name X`, or an agent
-calling `present` with `name`) refreshes any open tab of that preview, and the
-dashboard thumbnails. glim inserts a small inline script before `</body>` of each
+calling `present` with `name`) refreshes any open tab of that preview. glim inserts a small inline script before `</body>` of each
 served HTML page; it opens an `EventSource` to `/_glim/live/<slug>` and calls
 `location.reload()` when the stream reports `changed`. It is wrapped in an IIFE,
 reconnects with backoff, and stops after repeated failures or a `gone` event
-(the preview was removed or expired). The password unlock page never gets it. Pages that carry the script are served
+(the preview was removed or expired). The password unlock page never gets it, and neither do the
+dashboard's frames when it shows previews in frames (see
+[Dashboard](dashboard.md)), since the dashboard reloads those itself. Pages that carry the script are served
 with `Cache-Control: no-cache` and an `ETag` of the injected bytes, so a reload
 after a pin, extend or lock change is never answered with a stale `304`.
 

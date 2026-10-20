@@ -1,7 +1,9 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"os"
 
 	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/qrcode"
@@ -159,4 +161,47 @@ func (s *Server) deletePreview(w http.ResponseWriter, r *http.Request, _ auth.Se
 	}
 	s.poke()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// getThumb serves a screenshot of the preview's first screen for its card,
+// taking it first if this version has none yet. The dashboard's URL carries
+// the version, so the image can be cached for good.
+func (s *Server) getThumb(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	name, ok := s.livePreview(w, r)
+	if !ok {
+		return
+	}
+	if !s.d.Thumbs.Enabled() {
+		writeErr(w, http.StatusNotFound, "thumbs_off", "Thumbnails are off on this server.")
+		return
+	}
+	p, err := s.d.Thumbs.Path(r.Context(), name)
+	if errors.Is(err, os.ErrNotExist) {
+		// Republished or removed while it rendered; the dashboard asks
+		// again with the new version.
+		writeErr(w, http.StatusNotFound, "not_found", "That version of the preview is gone.")
+		return
+	}
+	if err != nil {
+		if r.Context().Err() == nil {
+			writeErr(w, http.StatusServiceUnavailable, "thumb_failed", "The preview couldn't be screenshotted.")
+		}
+		return
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		s.internal(w, err)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "image/jpeg")
+	h.Set("Cache-Control", "private, max-age=31536000, immutable")
+	h.Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, "", st.ModTime(), f)
 }

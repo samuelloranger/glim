@@ -34,7 +34,7 @@ export function App() {
     setScreen({
       kind: "app",
       user: info.user,
-      features: info.features ?? { listen: false, speech: false },
+      features: info.features ?? { listen: false, speech: false, thumbs: false },
     });
   }
 

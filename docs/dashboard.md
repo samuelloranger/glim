@@ -1,7 +1,7 @@
 # Dashboard
 
 `glim serve` includes a private dashboard at the site root. Use it to see every
-live preview, with a live thumbnail and the time it has left. You can extend,
+live preview, with a thumbnail and the time it has left. You can extend,
 pin, lock or remove a preview, and copy or share its link. **Share** shows the
 link as a QR code, to open it on a phone by scanning the screen, with a **Copy
 link** button and, where the browser offers one, **Share…** for the system share
@@ -9,8 +9,22 @@ sheet. Changes made elsewhere, such as a
 new publish from the CLI or an agent, or a preview expiring, show up within
 about two seconds without a reload.
 
+Thumbnails are screenshots of each preview's first screen. The server takes
+them in headless Chrome the first time the dashboard asks, and again after each
+republish. It keeps them in the preview's folder and serves them only to
+signed-in users, so a locked preview's thumbnail shows the page itself. They
+use the browser set by `listen.chrome` (see [Configuration](config.md)). When
+there is no browser, or it is set to `off`, the dashboard shows each preview in
+a frame instead, and a locked preview's frame shows the unlock form.
+
+While it is screenshotted, a preview's page can load its own files and anything
+on the public internet, such as scripts and fonts from a CDN. It can't reach the
+server's own machine, its local network, or any other preview: every request the
+browser makes goes through glim, which refuses loopback, private and link-local
+addresses.
+
 Password-protected previews carry a `locked` badge next to their title (the API's
-`locked` field). Their thumbnail shows the unlock form. **Lock** asks for a
+`locked` field). **Lock** asks for a
 password (twice) and protects the preview at once; **Unlock** removes the
 password. Either change signs out every visitor who unlocked it before.
 

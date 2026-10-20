@@ -47,7 +47,7 @@ glim report.html --title "Quick look" --local
 
 ## Dashboard
 
-`glim serve` also serves a private dashboard at `/`. It shows live thumbnails of
+`glim serve` also serves a private dashboard at `/`. It shows a thumbnail of
 every preview, a countdown and a seen count for each one, and lets you extend, pin, lock or
 remove them. It updates in real time. The first visit creates the account with an
 email and password, so do that before exposing the server. See

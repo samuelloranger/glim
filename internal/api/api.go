@@ -18,6 +18,7 @@ import (
 	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/listen"
 	"github.com/samuelloranger/glim/internal/store"
+	"github.com/samuelloranger/glim/internal/thumb"
 )
 
 const cookieName = "glim_session"
@@ -29,7 +30,10 @@ type Deps struct {
 	Hub     *Hub
 	// Listen makes audio versions of previews; nil or unconfigured turns
 	// the feature off.
-	Listen        *listen.Service
+	Listen *listen.Service
+	// Thumbs screenshots previews for the dashboard's cards; nil or without
+	// a browser, the dashboard frames the previews instead.
+	Thumbs        *thumb.Service
 	SecureCookies bool
 	// PublicHost is the host of the configured public domain (e.g.
 	// "glim.example.com"). An Origin on that host is always same-origin, even
@@ -96,6 +100,7 @@ func (s *Server) routes() {
 	m.Handle("POST /_glim/api/previews/{name}/lock", s.authed(s.postLock))
 	m.Handle("POST /_glim/api/previews/{name}/unlock", s.authed(s.postUnlock))
 	m.Handle("GET /_glim/api/previews/{name}/qr.svg", s.authed(s.getQR))
+	m.Handle("GET /_glim/api/previews/{name}/thumb.jpg", s.authed(s.getThumb))
 	m.Handle("GET /_glim/api/previews/{name}/listen", s.authed(s.getListen))
 	m.Handle("POST /_glim/api/previews/{name}/listen", s.authed(s.postListen))
 	m.Handle("GET /_glim/api/previews/{name}/listen/audio", s.authed(s.getListenAudio))
