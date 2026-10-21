@@ -119,6 +119,9 @@ func skillDir(target string, d Deps) (string, error) {
 // InstallSkill writes a SKILL.md for target instead of registering the MCP
 // server and steering rule. Re-running overwrites.
 func InstallSkill(target string, d Deps) ([]string, error) {
+	if target == "service" {
+		return nil, fmt.Errorf("--skill does not apply to service")
+	}
 	dir, err := skillDir(target, d)
 	if err != nil {
 		return nil, err
@@ -135,6 +138,9 @@ func InstallSkill(target string, d Deps) ([]string, error) {
 
 // Uninstall removes everything Install and InstallSkill added for target.
 func Uninstall(target string, d Deps) ([]string, error) {
+	if target == "service" {
+		return uninstallService(d)
+	}
 	var steps []string
 	add := func(removed bool, what string) {
 		if removed {

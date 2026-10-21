@@ -35,6 +35,9 @@ type Config struct {
 	// Listen configures the audio version of a preview: a vision model
 	// describes the page and a speech endpoint reads the description aloud.
 	Listen Listen `json:"listen,omitzero"`
+	// Warnings are problems found while loading, such as an env file readable
+	// by other users. Never saved.
+	Warnings []string `json:"-"`
 }
 
 // Listen points at OpenAI-compatible endpoints, so any provider (hosted or
@@ -99,6 +102,8 @@ func defaults() Config {
 
 func Load() Config {
 	c := defaults()
+	env, warnings := loadEnvFile(EnvPath())
+	c.Warnings = warnings
 	if data, err := os.ReadFile(Path()); err == nil {
 		var f Config
 		if json.Unmarshal(data, &f) == nil {
@@ -129,45 +134,45 @@ func Load() Config {
 			c.Listen = f.Listen
 		}
 	}
-	if v := firstEnv("GLIM_DOMAIN", "GLIM_BASE_URL"); v != "" {
+	if v := env.first("GLIM_DOMAIN", "GLIM_BASE_URL"); v != "" {
 		c.Domain = v
 	}
-	if v := os.Getenv("GLIM_BIND"); v != "" {
+	if v := env.get("GLIM_BIND"); v != "" {
 		c.Bind = v
 	}
-	if v := os.Getenv("GLIM_PORT"); v != "" {
+	if v := env.get("GLIM_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			c.Port = p
 		}
 	}
-	if v := os.Getenv("GLIM_ROOT"); v != "" {
+	if v := env.get("GLIM_ROOT"); v != "" {
 		c.Root = v
 	}
-	if v := os.Getenv("GLIM_TTL"); v != "" {
+	if v := env.get("GLIM_TTL"); v != "" {
 		c.TTL = v
 	}
-	if v := os.Getenv("GLIM_LIVE_RELOAD"); v != "" {
+	if v := env.get("GLIM_LIVE_RELOAD"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			c.LiveReload = &b
 		}
 	}
-	if v := os.Getenv("GLIM_SELF_FETCH"); v != "" {
+	if v := env.get("GLIM_SELF_FETCH"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			c.SelfFetch = &b
 		}
 	}
-	if v := os.Getenv("GLIM_HEADER"); v != "" {
+	if v := env.get("GLIM_HEADER"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			c.Header = &b
 		}
 	}
-	listenEnv(&c.Listen)
+	listenEnv(env, &c.Listen)
 	return c
 }
 
 // listenEnv applies the GLIM_LLM_* / GLIM_TTS_* / GLIM_CHROME overrides.
-func listenEnv(l *Listen) {
-	for env, dst := range map[string]*string{
+func listenEnv(env envLayer, l *Listen) {
+	for name, dst := range map[string]*string{
 		"GLIM_LLM_URL":             &l.LLMURL,
 		"GLIM_LLM_MODEL":           &l.LLMModel,
 		"GLIM_LLM_API_KEY":         &l.LLMKey,
@@ -178,11 +183,11 @@ func listenEnv(l *Listen) {
 		"GLIM_CHROME":              &l.Chrome,
 		"GLIM_LISTEN_INSTRUCTIONS": &l.Instructions,
 	} {
-		if v := os.Getenv(env); v != "" {
+		if v := env.get(name); v != "" {
 			*dst = v
 		}
 	}
-	if v := os.Getenv("GLIM_LLM_MAX_TOKENS"); v != "" {
+	if v := env.get("GLIM_LLM_MAX_TOKENS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			l.LLMMaxTokens = n
 		}
@@ -213,15 +218,6 @@ func (c Config) Save() error {
 		return err
 	}
 	return os.WriteFile(p, append(data, '\n'), 0o644)
-}
-
-func firstEnv(keys ...string) string {
-	for _, k := range keys {
-		if v := os.Getenv(k); v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func DBPath() string {

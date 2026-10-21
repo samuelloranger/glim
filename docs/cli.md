@@ -210,19 +210,26 @@ install` wires it into an agent.
 
 ```sh
 glim install [--skill] <claude|codex|cursor>
+glim install service
 ```
 
 Registers the MCP server with the agent and writes a steering rule so it prefers
 glim for previews. With `--skill` it writes a `SKILL.md` instead, with no MCP
 server. See [Agent integration](/agents).
 
+`glim install service` sets up the server as a per-user service (a systemd user
+unit on Linux, a launchd agent on macOS), starts it, and checks that it answers.
+Re-running it brings the service file up to date. `--skill` does not apply to it.
+See [Run it as a service](/serving#run-it-as-a-service).
+
 ## uninstall
 
 ```sh
-glim uninstall <claude|codex|cursor>
+glim uninstall <claude|codex|cursor|service>
 ```
 
-Removes everything `install` added, in either mode. Safe to re-run.
+Removes everything `install` added, in either mode. Safe to re-run. For `service`
+it stops and removes the unit or agent, and refuses a file glim did not write.
 
 ## version
 

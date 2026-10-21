@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -501,7 +502,7 @@ func cmdStatus() error {
 	}
 	fmt.Printf("root:     %s\n", cfg.Root)
 	state, haveState := serve.ReadState()
-	running := haveState && pidAlive(state.PID) && portOpen(state.Port)
+	running := haveState && pidAlive(state.PID) && serve.Probe(state)
 	fmt.Printf("server:   %s\n", serverLine(state, running))
 	if running {
 		if note := serve.HTTPSNote(cfg.Domain); note != "" {
@@ -576,6 +577,9 @@ func cmdServe(args []string) error {
 	users, err := db.CountUsers(ctx)
 	if err != nil {
 		return err
+	}
+	for _, w := range cfg.Warnings {
+		log.Printf("warning: %s", w)
 	}
 	shownBase := base
 	if shownBase == "" {
@@ -720,6 +724,9 @@ func cmdConfig(args []string) error {
 		fmt.Printf("self_fetch:  %t\n", cfg.SelfFetchEnabled())
 		fmt.Printf("header:      %t\n", cfg.HeaderEnabled())
 		printListen(cfg.Listen)
+		for _, w := range cfg.Warnings {
+			fmt.Println("warning:", w)
+		}
 		return nil
 	}
 	if *domain != "" {
@@ -901,7 +908,7 @@ func cmdInstall(args []string) error {
 		}
 	}
 	if len(targets) != 1 {
-		return fmt.Errorf("usage: glim install [--skill] <claude|codex|cursor>")
+		return fmt.Errorf("usage: glim install [--skill] <claude|codex|cursor|service>")
 	}
 	d, err := installDeps()
 	if err != nil {
@@ -913,25 +920,60 @@ func cmdInstall(args []string) error {
 	} else {
 		steps, err = install.Install(targets[0], d)
 	}
-	for _, s := range steps {
-		fmt.Println("✓", s)
-	}
+	printSteps(steps)
 	return err
 }
 
 func cmdUninstall(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: glim uninstall <claude|codex|cursor>")
+		return fmt.Errorf("usage: glim uninstall <claude|codex|cursor|service>")
 	}
 	d, err := installDeps()
 	if err != nil {
 		return err
 	}
 	steps, err := install.Uninstall(args[0], d)
-	for _, s := range steps {
-		fmt.Println("✓", s)
-	}
+	printSteps(steps)
 	return err
+}
+
+// printSteps prints one line per step: ✓ for what was done, ! for a
+// "warning: " or "note: " the user should read.
+func printSteps(steps []string) {
+	for _, s := range steps {
+		if rest, ok := strings.CutPrefix(s, "warning: "); ok {
+			fmt.Println("!", rest)
+		} else if rest, ok := strings.CutPrefix(s, "note: "); ok {
+			fmt.Println("!", rest)
+		} else {
+			fmt.Println("✓", s)
+		}
+	}
+}
+
+// serviceBinPath is the absolute path to run as the service. On Linux
+// os.Executable resolves symlinks, so a stable symlink the user ran glim
+// through (a Homebrew bin entry, ~/.local/bin/glim) is recovered from argv[0]
+// when it points at the same binary; it then survives upgrades.
+func serviceBinPath(self string) string {
+	arg := os.Args[0]
+	if !strings.Contains(arg, "/") {
+		p, err := exec.LookPath(arg)
+		if err != nil {
+			return self
+		}
+		arg = p
+	}
+	abs, err := filepath.Abs(arg)
+	if err != nil {
+		return self
+	}
+	a, errA := filepath.EvalSymlinks(abs)
+	b, errB := filepath.EvalSymlinks(self)
+	if errA != nil || errB != nil || a != b {
+		return self
+	}
+	return abs
 }
 
 func installDeps() (install.Deps, error) {
@@ -944,6 +986,31 @@ func installDeps() (install.Deps, error) {
 		GlimPath:   self,
 		HasCommand: func(name string) bool { _, e := exec.LookPath(name); return e == nil },
 		Run:        install.DefaultRun,
+		Service: install.ServiceDeps{
+			OS:       runtime.GOOS,
+			UID:      os.Getuid(),
+			User:     os.Getenv("USER"),
+			BinPath:  serviceBinPath(self),
+			Path:     os.Getenv("PATH"),
+			TempDirs: []string{os.TempDir()},
+			Output: func(name string, args ...string) (string, error) {
+				out, err := exec.Command(name, args...).Output()
+				return string(out), err
+			},
+			State:    serve.ReadState,
+			PidAlive: pidAlive,
+			Probe:    serve.Probe,
+			Domain:   config.Load().Domain,
+			HasAccounts: func() (bool, error) {
+				db, err := auth.Open(config.DBPath())
+				if err != nil {
+					return false, err
+				}
+				defer db.Close()
+				n, err := db.CountUsers(context.Background())
+				return n > 0, err
+			},
+		},
 	}, nil
 }
 
@@ -1194,11 +1261,12 @@ usage:
   glim open <name> | status                   open a link / show instance status
   glim mcp                                    run as MCP server
   glim install [--skill] <claude|codex|cursor>  wire into an agent (--skill: SKILL.md only)
-  glim uninstall <claude|codex|cursor>        undo install
+  glim install service                        run the server in the background (systemd user unit / launchd agent)
+  glim uninstall <claude|codex|cursor|service>  undo install
   glim user ls | passwd <email> | rm <email>  manage dashboard accounts
   glim version
 
-config: ~/.glim/config.json (env: GLIM_DOMAIN, GLIM_PORT, GLIM_ROOT, GLIM_TTL, GLIM_LIVE_RELOAD, GLIM_SELF_FETCH, GLIM_SESSION_ID)
+config: ~/.glim/config.json; GLIM_* keys also read from ~/.glim/env (env: GLIM_DOMAIN, GLIM_PORT, GLIM_ROOT, GLIM_TTL, GLIM_LIVE_RELOAD, GLIM_SELF_FETCH, GLIM_SESSION_ID)
 `)
 }
 
