@@ -156,6 +156,10 @@ func installService(d Deps) ([]string, error) {
 		return nil, err
 	}
 
+	// oldPID is the server being replaced on macOS, which must not pass the
+	// health check for the new one. systemctl restart only returns once the
+	// new process is up, so Linux needs no such guard.
+	oldPID := 0
 	var content string
 	if v.os == "linux" {
 		content = unitFile(v.bin, v.s.Path)
@@ -185,8 +189,17 @@ func installService(d Deps) ([]string, error) {
 		}
 	} else {
 		if _, err := v.output("launchctl", "print", v.target()); err == nil {
+			oldPID, _ = v.servicePID()
 			if err := v.d.Run("launchctl", "bootout", v.target()); err != nil {
 				return steps, fmt.Errorf("launchctl bootout failed: %w", err)
+			}
+			// bootout can return while the old job is still being torn down,
+			// and bootstrap fails until it is gone.
+			for i := 0; i < healthTries; i++ {
+				if _, err := v.output("launchctl", "print", v.target()); err != nil {
+					break
+				}
+				v.s.sleep(healthEvery)
 			}
 		}
 		if err := v.d.Run("launchctl", "bootstrap", v.domain(), v.path); err != nil {
@@ -195,7 +208,7 @@ func installService(d Deps) ([]string, error) {
 		steps = append(steps, "loaded "+plistLabel+" into launchd")
 	}
 
-	st, err := v.waitHealthy()
+	st, err := v.waitHealthy(oldPID)
 	if err != nil {
 		return steps, err
 	}
@@ -264,9 +277,10 @@ func (v *svc) write(content string) (backup string, err error) {
 
 // waitHealthy polls until serve.json names the service's own pid and its
 // address accepts connections, so a stale file from an earlier run cannot pass.
-func (v *svc) waitHealthy() (serve.State, error) {
+// A service still running as oldPID is the server being replaced, not the new one.
+func (v *svc) waitHealthy(oldPID int) (serve.State, error) {
 	for i := 0; i < healthTries; i++ {
-		if pid, err := v.servicePID(); err == nil && pid > 0 {
+		if pid, err := v.servicePID(); err == nil && pid > 0 && pid != oldPID {
 			if st, ok := v.s.State(); ok && st.PID == pid && v.s.Probe(st) {
 				return st, nil
 			}
@@ -348,7 +362,8 @@ func unitFile(bin, path string) string {
 	var b strings.Builder
 	b.WriteString("# " + serviceMarker + "\n")
 	b.WriteString("[Unit]\nDescription=glim preview server\nAfter=network.target\n\n[Service]\n")
-	b.WriteString("ExecStart=" + unitQuote(strings.ReplaceAll(bin, "$", "$$")) + " serve\n")
+	// systemd expands no variables in the executable word, so $ stays as is.
+	b.WriteString("ExecStart=" + unitQuote(bin) + " serve\n")
 	if path != "" {
 		b.WriteString("Environment=" + unitQuote("PATH="+path) + "\n")
 	}

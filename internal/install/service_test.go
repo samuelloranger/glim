@@ -30,6 +30,12 @@ type sysFake struct {
 	sleeps    int
 	accounts  bool
 	noLogin   bool // loginctl missing
+	// launchd: after bootout, print keeps showing the old job for outLag
+	// more calls, then fails. bootstrap loads the job as bootPID, which then
+	// owns serve.json; bootPID 0 means the new server never comes up.
+	bootPID   int
+	outLag    int
+	bootedOut bool
 }
 
 func (f *sysFake) deps(t *testing.T, osName string) Deps {
@@ -46,13 +52,33 @@ func (f *sysFake) deps(t *testing.T, osName string) Deps {
 		Run: func(name string, args ...string) error {
 			c := strings.Join(append([]string{name}, args...), " ")
 			f.calls = append(f.calls, c)
-			return f.runErr[c]
+			if err := f.runErr[c]; err != nil {
+				return err
+			}
+			switch {
+			case c == "launchctl bootout gui/501/glim":
+				f.bootedOut = true
+			case strings.HasPrefix(c, "launchctl bootstrap"):
+				f.bootedOut = false
+				if f.bootPID == 0 {
+					break
+				}
+				f.outputs[printCmd] = "gui/501/glim = {\n\tpid = " + strconv.Itoa(f.bootPID) + "\n}\n"
+				f.state = &serve.State{Port: 8787, Bind: "127.0.0.1", PID: f.bootPID}
+			}
+			return nil
 		},
 		Service: ServiceDeps{
 			OS: osName, UID: 501, User: "tester", Path: "/usr/local/bin:/usr/bin",
 			TempDirs: []string{"/tmp"},
 			Output: func(name string, args ...string) (string, error) {
 				c := strings.Join(append([]string{name}, args...), " ")
+				if c == printCmd && f.bootedOut {
+					if f.outLag == 0 {
+						delete(f.outputs, printCmd)
+					}
+					f.outLag--
+				}
 				out, ok := f.outputs[c]
 				if !ok {
 					return "", errors.New("command failed: " + c)
@@ -344,6 +370,7 @@ func TestInstallServiceAlreadyRunningElsewhere(t *testing.T) {
 				}
 			} else if c.svcPID != "" {
 				f.outputs[printCmd] = "gui/501/glim = {\n\tstate = running\n\tpid = " + strings.TrimPrefix(c.svcPID, "pid=") + "\n}\n"
+				f.bootPID = 778
 			}
 			if c.wantErr != "" {
 				_, err := Install("service", d)
@@ -512,6 +539,7 @@ func TestInstallServiceDarwinReinstallBootsOutFirst(t *testing.T) {
 	d := f.deps(t, "darwin")
 	f.outputs[printCmd] = "gui/501/glim = {\n\tpid = 321\n}\n"
 	f.state = &serve.State{Port: 8787, PID: 321}
+	f.bootPID = 322
 	mustWrite(t, plistPath(d), "<?xml version=\"1.0\"?>\n<!-- glim:managed -->\n<plist/>\n")
 	if _, err := Install("service", d); err != nil {
 		t.Fatal(err)
@@ -525,11 +553,50 @@ func TestInstallServiceDarwinReinstallBootsOutFirst(t *testing.T) {
 	}
 }
 
+// bootout returns before the old job is gone: bootstrap must wait for it, and
+// the outgoing server, still answering on its port, must not pass the health
+// check for the new one.
+func TestInstallServiceDarwinReloadWaitsForOldJob(t *testing.T) {
+	t.Run("waits for bootout to finish", func(t *testing.T) {
+		f := &sysFake{}
+		d := f.deps(t, "darwin")
+		f.outputs[printCmd] = "pid = 321\n"
+		f.state = &serve.State{Port: 8787, PID: 321}
+		f.bootPID, f.outLag = 322, 3
+		if _, err := Install("service", d); err != nil {
+			t.Fatal(err)
+		}
+		if f.outLag >= 0 {
+			t.Errorf("bootstrap ran while the old job was still loaded (lag left %d)", f.outLag)
+		}
+	})
+	t.Run("old server does not pass", func(t *testing.T) {
+		f := &sysFake{}
+		d := f.deps(t, "darwin")
+		f.outputs[printCmd] = "pid = 321\n"
+		f.state = &serve.State{Port: 8787, PID: 321}
+		// bootstrap reloads the job but it still reports the old pid, which
+		// still owns serve.json and answers.
+		d.Run = func(name string, args ...string) error {
+			c := strings.Join(append([]string{name}, args...), " ")
+			f.calls = append(f.calls, c)
+			if strings.HasPrefix(c, "launchctl bootstrap") {
+				f.outputs[printCmd] = "pid = 321\n"
+			}
+			return nil
+		}
+		if _, err := Install("service", d); err == nil || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("err = %v, want health-check failure", err)
+		}
+	})
+}
+
 func TestInstallServiceDarwinTakeoverWithExistingBackup(t *testing.T) {
 	f := &sysFake{}
 	d := f.deps(t, "darwin")
 	f.outputs[printCmd] = "pid = 9\n"
 	f.state = &serve.State{Port: 8787, PID: 9}
+	f.bootPID = 10
 	mustWrite(t, plistPath(d), "<plist>hand written</plist>")
 	mustWrite(t, plistPath(d)+".bak", "older")
 	steps, err := Install("service", d)
@@ -649,7 +716,7 @@ func TestServiceTargetErrors(t *testing.T) {
 
 func TestUnitQuoting(t *testing.T) {
 	u := unitFile(`/opt/my glim/100%/glim$x`, `/a b:/c"d`)
-	for _, want := range []string{`ExecStart="/opt/my glim/100%%/glim$$x" serve`, `Environment="PATH=/a b:/c\"d"`} {
+	for _, want := range []string{`ExecStart="/opt/my glim/100%%/glim$x" serve`, `Environment="PATH=/a b:/c\"d"`} {
 		if !strings.Contains(u, want) {
 			t.Errorf("missing %q in\n%s", want, u)
 		}

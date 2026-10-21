@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -848,8 +849,8 @@ func parseVoices(s string) (map[string]string, error) {
 }
 
 func ensureLocalServer(cfg config.Config) (string, error) {
-	if st, ok := serve.ReadState(); ok && st.Root == cfg.Root && pidAlive(st.PID) && portOpen(st.Port) {
-		return serve.BaseURL(st.Port), nil
+	if st, ok := serve.ReadState(); ok && st.Root == cfg.Root && pidAlive(st.PID) && serve.Probe(st) {
+		return st.LoopbackURL(), nil
 	}
 	port, err := serve.FreePort()
 	if err != nil {
@@ -976,6 +977,18 @@ func serviceBinPath(self string) string {
 	return abs
 }
 
+// currentUser is the login name for loginctl: $USER, else the account
+// database, since $USER is unset in some non-login sessions.
+func currentUser() string {
+	if u := os.Getenv("USER"); u != "" {
+		return u
+	}
+	if u, err := user.Current(); err == nil {
+		return u.Username
+	}
+	return ""
+}
+
 func installDeps() (install.Deps, error) {
 	self, err := os.Executable()
 	if err != nil {
@@ -989,7 +1002,7 @@ func installDeps() (install.Deps, error) {
 		Service: install.ServiceDeps{
 			OS:       runtime.GOOS,
 			UID:      os.Getuid(),
-			User:     os.Getenv("USER"),
+			User:     currentUser(),
 			BinPath:  serviceBinPath(self),
 			Path:     os.Getenv("PATH"),
 			TempDirs: []string{os.TempDir()},
