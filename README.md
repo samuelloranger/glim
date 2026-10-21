@@ -76,7 +76,8 @@ glim <entry> --password | lock <name> | unlock <name>                 password-p
 glim open <name> | status                                             open a link / show status
 glim mcp                                                              run as an MCP server
 glim install [--skill] <claude|codex|cursor>                          wire into an agent
-glim uninstall <claude|codex|cursor>                                  undo install
+glim install service                                                  run the server in the background
+glim uninstall <claude|codex|cursor|service>                          undo install
 glim user ls | passwd <email> | rm <email>                            manage dashboard accounts
 glim version
 ```
@@ -104,13 +105,25 @@ readable slug carries a short random suffix but is not a secret.
 
 ## Run as a service
 
-`contrib/glim.service` is a systemd user unit:
+```sh
+glim install service     # systemd user unit on Linux, launchd agent on macOS
+glim uninstall service
+```
+
+It writes the unit (`~/.config/systemd/user/glim.service`) or agent
+(`~/Library/LaunchAgents/glim.plist`), starts it, and waits until the server
+answers. Re-run it after moving or upgrading the binary. On Linux, run
+`loginctl enable-linger "$USER"` to keep the server running after you log out. On
+macOS the agent only runs while you are logged in; its log is
+`~/Library/Logs/glim/serve.log`. Put API keys in `~/.glim/env` (see
+[docs/config.md](docs/config.md)).
+
+Manage it with:
 
 ```sh
-mkdir -p ~/.config/systemd/user
-cp contrib/glim.service ~/.config/systemd/user/
-systemctl --user enable --now glim
-loginctl enable-linger "$USER"   # survive logout/reboot
+systemctl --user status glim            # or: restart, stop
+journalctl --user -u glim -n 50         # logs
+launchctl kickstart -k gui/$(id -u)/glim   # macOS: restart
 ```
 
 ## License

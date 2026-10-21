@@ -49,4 +49,7 @@ case ":$PATH:" in
 	*) echo "glim: add $DEST to your PATH" >&2 ;;
 esac
 
-echo "glim: run 'glim config --domain https://glim.example.com' then 'glim install claude'"
+echo "glim: next steps:"
+echo "  glim install service                           # run the server in the background"
+echo "  glim config --domain https://glim.example.com  # optional: public links"
+echo "  glim install claude                            # or codex, cursor"

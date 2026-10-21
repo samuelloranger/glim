@@ -58,10 +58,23 @@ glim config --tts-url http://127.0.0.1:8880/v1 --tts-model some-tts-model \
 | `listen.chrome` | _(search PATH)_ | Browser used to render the page for screenshots: a path or a command name. The search tries `chrome-headless-shell` first (see [Browser](#browser)), then Google Chrome and Chromium. `off` never uses one. Without a browser, glim reads the page's HTML and its image files instead (scripts don't run). The dashboard's thumbnails use the same browser and, without one, show each preview in a frame instead. |
 | `listen.instructions` | _(none)_ | Extra instructions appended to the prompt, such as `Keep it under five minutes.` |
 
-API keys are never stored in the config file. Set `GLIM_LLM_API_KEY` and
-`GLIM_TTS_API_KEY` in the environment of `glim serve` (for the systemd unit,
-an `Environment=` line or an `EnvironmentFile=` readable only by you). Every
-other key can also be set from the environment: `GLIM_LLM_URL`,
+API keys are never stored in the config file. Put `GLIM_LLM_API_KEY` and
+`GLIM_TTS_API_KEY` in `~/.glim/env`, a file only you can read (`chmod 600`), so
+they reach `glim serve` however it is started, including `glim install service`:
+
+```sh
+# ~/.glim/env
+GLIM_LLM_API_KEY=sk-example
+GLIM_TTS_API_KEY="sk-example-2"
+```
+
+Each line is `KEY=VALUE`; blank lines and `#` comments are skipped, one pair of
+surrounding quotes is removed, and an `export` prefix is accepted. Values are not
+expanded. Only keys starting with `GLIM_` are used; glim logs a warning naming any
+other key it ignores, and warns when the file is readable by other users (also
+shown by `glim config`). glim never writes this file. A real environment variable
+wins over the file, and the file wins over `config.json`, so an `Environment=` line
+or an `EnvironmentFile=` in a systemd drop-in keeps working. Every other key can also be set from the environment: `GLIM_LLM_URL`,
 `GLIM_LLM_MODEL`, `GLIM_LLM_MAX_TOKENS`, `GLIM_TTS_URL`, `GLIM_TTS_MODEL`, `GLIM_TTS_VOICE`,
 `GLIM_CHROME` and `GLIM_LISTEN_INSTRUCTIONS`.
 

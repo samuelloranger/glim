@@ -133,14 +133,41 @@ plain http.
 
 ## Run it as a service
 
-`contrib/glim.service` is a systemd user unit:
+```sh
+glim install service
+```
+
+On Linux this writes a systemd user unit to `~/.config/systemd/user/glim.service`,
+enables it and restarts it. On macOS it writes a launchd agent to
+`~/Library/LaunchAgents/glim.plist` (label `glim`) and loads it. The service runs
+`<path to glim> serve` with no flags, so settings come from
+[the config](/config) and apply on restart; the unit carries your `PATH` so the
+server finds the same browser you do. Re-running the command is safe: it rewrites
+the file for the current binary and restarts the service. A unit or plist you wrote
+yourself is moved to `glim.service.bak` (or `glim.plist.bak`) first, and
+`glim.service.d/` drop-ins are left alone.
+
+The command finishes by checking that the server answers (using the address the
+server recorded in `~/.glim/serve.json`) and printing its URL. If that check fails
+the service stays installed; read the log and re-run it.
+
+- **Linux:** the server stops when you log out unless lingering is on. The command
+  warns when it is off; enable it with `loginctl enable-linger "$USER"`. Logs:
+  `journalctl --user -u glim -n 50`. Without a systemd user session, run
+  `glim serve` yourself or under your own supervisor.
+- **macOS:** a LaunchAgent only runs while you are logged in. Logs:
+  `~/Library/Logs/glim/serve.log`.
+
+Manage it with:
 
 ```sh
-mkdir -p ~/.config/systemd/user
-cp contrib/glim.service ~/.config/systemd/user/
-systemctl --user enable --now glim
-loginctl enable-linger "$USER"   # keep it running after logout / across reboots
+systemctl --user status glim            # or: restart, stop
+journalctl --user -u glim -n 50         # logs
+launchctl kickstart -k gui/$(id -u)/glim   # macOS: restart
 ```
+
+Remove the service with `glim uninstall service`. It refuses a unit or plist glim
+did not write.
 
 ## Behind a reverse proxy
 

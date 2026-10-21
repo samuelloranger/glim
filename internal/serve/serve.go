@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -276,7 +277,7 @@ func Serve(ctx context.Context, o Options) error {
 	if o.Store.BaseURL == "" {
 		o.Store.BaseURL = BaseURL(actual)
 	}
-	_ = WriteState(State{Port: actual, PID: os.Getpid(), Root: o.Store.Root})
+	_ = WriteState(State{Port: actual, Bind: bind, PID: os.Getpid(), Root: o.Store.Root})
 	fmt.Printf("glim serving %s on %s:%d\n", o.Store.Root, bind, actual)
 	go RunGC(ctx, o.Store, time.Minute, log.Printf)
 	srv := &http.Server{Handler: NewRouter(o), ReadHeaderTimeout: 10 * time.Second}
@@ -293,7 +294,10 @@ func Serve(ctx context.Context, o Options) error {
 func BaseURL(port int) string { return fmt.Sprintf("http://127.0.0.1:%d", port) }
 
 type State struct {
-	Port int    `json:"port"`
+	Port int `json:"port"`
+	// Bind is the address the server listens on. Empty in a serve.json
+	// written by an older glim, which was always probed on loopback.
+	Bind string `json:"bind,omitempty"`
 	PID  int    `json:"pid"`
 	Root string `json:"root"`
 }
@@ -375,3 +379,32 @@ func (n noListFS) Open(name string) (http.File, error) {
 type noReaddirFile struct{ http.File }
 
 func (noReaddirFile) Readdir(int) ([]os.FileInfo, error) { return nil, nil }
+
+// ProbeHost is the address to dial to reach a server bound to bind: a
+// wildcard or empty bind is reached through loopback of its own family.
+func ProbeHost(bind string) string {
+	switch bind {
+	case "", "0.0.0.0":
+		return "127.0.0.1"
+	case "::", "[::]":
+		return "::1"
+	}
+	return bind
+}
+
+// LoopbackURL is the http URL under which the server described by s can be
+// reached from this machine.
+func (s State) LoopbackURL() string {
+	return "http://" + net.JoinHostPort(ProbeHost(s.Bind), strconv.Itoa(s.Port))
+}
+
+// Probe reports whether something accepts TCP connections where the server
+// described by s listens.
+func Probe(s State) bool {
+	c, err := net.DialTimeout("tcp", net.JoinHostPort(ProbeHost(s.Bind), strconv.Itoa(s.Port)), 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	c.Close()
+	return true
+}

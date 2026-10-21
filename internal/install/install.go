@@ -50,6 +50,9 @@ type Deps struct {
 	GlimPath   string
 	HasCommand func(string) bool
 	Run        func(name string, args ...string) error
+	// Service holds what the "service" target needs; the agent targets
+	// ignore it.
+	Service ServiceDeps
 }
 
 func Install(target string, d Deps) ([]string, error) {
@@ -60,8 +63,10 @@ func Install(target string, d Deps) ([]string, error) {
 		return installCodex(d)
 	case "cursor":
 		return installCursor(d)
+	case "service":
+		return installService(d)
 	default:
-		return nil, fmt.Errorf("unknown target %q (want claude|codex|cursor)", target)
+		return nil, fmt.Errorf("unknown target %q (want claude|codex|cursor|service)", target)
 	}
 }
 

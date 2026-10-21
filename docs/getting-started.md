@@ -18,12 +18,22 @@ git clone https://github.com/samuelloranger/glim
 cd glim && go build -o ~/.local/bin/glim .
 ```
 
-## Your first preview
-
-Start the server, then publish a page:
+## Run the server
 
 ```sh
-glim serve &
+glim install service
+```
+
+This sets up glim's server as a background service for your user (a systemd user
+unit on Linux, a launchd agent on macOS), starts it, and prints its address. See
+[Serving & reverse proxy](/serving#run-it-as-a-service). To try glim without a
+service, run `glim serve &` instead.
+
+## Your first preview
+
+With the server running, publish a page:
+
+```sh
 glim report.html --title "Diff review"
 # → http://127.0.0.1:8787/diff-review-a1b2/
 ```
