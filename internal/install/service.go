@@ -173,6 +173,14 @@ func installService(d Deps) ([]string, error) {
 	steps = append(steps, "wrote "+v.path)
 	if took != "" {
 		steps = append(steps, fmt.Sprintf("took over existing %s (backup: %s)", filepath.Base(v.path), took))
+		// The old file may carry settings the template lacks, and a re-install
+		// rewrites the file, so they belong somewhere glim never touches.
+		keep := "re-apply any setting from the backup you still need"
+		if v.os == "linux" {
+			keep = "settings in the backup are not carried over; put any you still need in a drop-in, " +
+				v.path + ".d/override.conf, which re-installs leave alone"
+		}
+		steps = append(steps, "note: "+keep)
 	}
 
 	if v.os == "linux" {
@@ -361,7 +369,10 @@ func isTempBuild(bin string, tempDirs []string) bool {
 func unitFile(bin, path string) string {
 	var b strings.Builder
 	b.WriteString("# " + serviceMarker + "\n")
-	b.WriteString("[Unit]\nDescription=glim preview server\nAfter=network.target\n\n[Service]\n")
+	// StartLimitIntervalSec=0 keeps retrying forever: a bind address that only
+	// appears later (a container bridge, a VPN) would otherwise exhaust the
+	// start limit during boot and leave the server down.
+	b.WriteString("[Unit]\nDescription=glim preview server\nAfter=network.target\nStartLimitIntervalSec=0\n\n[Service]\n")
 	// systemd expands no variables in the executable word, so $ stays as is.
 	b.WriteString("ExecStart=" + unitQuote(bin) + " serve\n")
 	if path != "" {

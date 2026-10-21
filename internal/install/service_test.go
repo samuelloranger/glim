@@ -179,7 +179,7 @@ func TestInstallServiceLinuxFresh(t *testing.T) {
 	for _, want := range []string{
 		`ExecStart="/home/u/.local/bin/glim" serve`,
 		`Environment="PATH=/usr/local/bin:/usr/bin"`,
-		"Restart=on-failure", "WantedBy=default.target",
+		"Restart=on-failure", "StartLimitIntervalSec=0", "WantedBy=default.target",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit missing %q:\n%s", want, unit)
@@ -274,7 +274,8 @@ func TestInstallServiceLinuxTakeover(t *testing.T) {
 			if !strings.HasPrefix(mustRead(t, unitPath(d)), "# glim:managed") {
 				t.Error("unit not replaced")
 			}
-			if !hasSvcStep(steps, "took over existing glim.service (backup: "+c.wantBak+")") {
+			if !hasSvcStep(steps, "took over existing glim.service (backup: "+c.wantBak+")") ||
+				!hasSvcStep(steps, "note: settings in the backup are not carried over") {
 				t.Errorf("steps = %v", steps)
 			}
 		})
