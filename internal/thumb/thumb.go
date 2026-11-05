@@ -275,7 +275,7 @@ func startBrowser(chrome, root string) (*browser, error) {
 	// The first Run starts the browser. A context with a deadline would
 	// also bound the browser's life, so the start is timed out by hand.
 	started := make(chan error, 1)
-	go func() { started <- chromedp.Run(ctx) }()
+	go func() { started <- chromedp.Do(ctx) }()
 	select {
 	case err = <-started:
 	case <-time.After(timeout):
@@ -302,21 +302,21 @@ func (b *browser) shoot(name string) ([]byte, error) {
 	defer cancel()
 	ctx, stop := context.WithTimeout(tab, timeout)
 	defer stop()
-	var out []byte
-	err := chromedp.Run(ctx,
+	err := chromedp.Do(ctx,
 		chromedp.EmulateViewport(Width, Height),
 		chromedp.Navigate("http://"+host+"/"+name+"/"),
 		chromedp.Sleep(settle),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			shot, err := page.CaptureScreenshot().
-				WithFormat(page.CaptureScreenshotFormatJpeg).
-				WithQuality(quality).
-				WithClip(&page.Viewport{Width: Width, Height: Height, Scale: Scale}).
-				Do(ctx)
-			out = shot
-			return err
-		}),
 	)
+	var out []byte
+	if err == nil {
+		var res page.CaptureScreenshotResult
+		res, err = chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{
+			Format:  page.CaptureScreenshotFormatJpeg,
+			Quality: new(int64(quality)),
+			Clip:    &page.Viewport{Width: Width, Height: Height, Scale: Scale},
+		})
+		out = res.Data
+	}
 	if err != nil {
 		return nil, fmt.Errorf("render the page: %w", err)
 	}

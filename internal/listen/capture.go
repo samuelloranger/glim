@@ -156,20 +156,22 @@ func RenderPage(ctx context.Context, chrome, dir, slug string) (Page, error) {
 	var lay layout
 	// Starting the browser is its own step, so a browser that can't start is
 	// told apart from a page that fails to render.
-	if err := chromedp.Run(cctx); err != nil {
+	if err := chromedp.Do(cctx); err != nil {
 		return Page{}, &StartError{Browser: chrome, Err: err}
 	}
-	err = chromedp.Run(cctx,
+	err = chromedp.Do(cctx,
 		chromedp.EmulateViewport(viewW, viewH),
 		chromedp.Navigate(url),
 		chromedp.Sleep(settle),
 		// Scroll to the end and back so lazy images below the fold load.
-		chromedp.Evaluate(`window.scrollTo(0, document.documentElement.scrollHeight)`, nil),
+		scrollTo(`window.scrollTo(0, document.documentElement.scrollHeight)`),
 		chromedp.Sleep(400*time.Millisecond),
-		chromedp.Evaluate(`window.scrollTo(0, 0)`, nil),
+		scrollTo(`window.scrollTo(0, 0)`),
 		chromedp.Sleep(300*time.Millisecond),
-		chromedp.Evaluate(measureJS, &lay),
 	)
+	if err == nil {
+		lay, err = chromedp.Run(cctx, chromedp.Evaluate[layout](measureJS))
+	}
 	if err != nil {
 		return Page{}, fmt.Errorf("render the page in %s: %w", chrome, err)
 	}
@@ -224,17 +226,20 @@ type StartError struct {
 func (e *StartError) Error() string { return "start " + e.Browser + ": " + e.Err.Error() }
 func (e *StartError) Unwrap() error { return e.Err }
 
-func shoot(ctx context.Context, clip *page.Viewport) ([]byte, error) {
-	var out []byte
-	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		b, err := page.CaptureScreenshot().
-			WithFormat(page.CaptureScreenshotFormatJpeg).
-			WithQuality(80).
-			WithCaptureBeyondViewport(true).
-			WithClip(clip).
-			Do(ctx)
-		out = b
+// scrollTo runs a script whose result is discarded.
+func scrollTo(js string) chromedp.Action[chromedp.Void] {
+	return chromedp.Func(func(ctx context.Context, t *chromedp.Target) error {
+		_, err := chromedp.Evaluate[any](js)(ctx, t)
 		return err
-	}))
-	return out, err
+	})
+}
+
+func shoot(ctx context.Context, clip *page.Viewport) ([]byte, error) {
+	res, err := chromedp.Call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{
+		Format:                page.CaptureScreenshotFormatJpeg,
+		Quality:               new(int64(80)),
+		CaptureBeyondViewport: new(true),
+		Clip:                  clip,
+	})
+	return res.Data, err
 }
