@@ -332,3 +332,24 @@ func TestLockedResponsesAreNeverSharedCacheable(t *testing.T) {
 		}
 	}
 }
+
+// One client burning the failure budget must not lock out another client that
+// knows the password, while that one client stays throttled.
+func TestUnlockOneClientCannotLockOutOthers(t *testing.T) {
+	e := newLockEnv(t, true)
+	page := "/" + e.slug + "/"
+	evaluated := 0
+	for i := 0; i < 2*maxUnlockAttempts; i++ {
+		rec := e.doFrom("203.0.113.50:1", "", page, url.Values{"password": {"wrong-pass"}})
+		if rec.Code == http.StatusUnauthorized {
+			evaluated++
+		}
+	}
+	if evaluated > 5 {
+		t.Fatalf("one address got %d guesses, want at most 5", evaluated)
+	}
+	rec := e.doFrom("203.0.113.51:1", "", page, url.Values{"password": {"hunter22!"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("other client unlock = %d, want 303", rec.Code)
+	}
+}

@@ -76,3 +76,16 @@ func TestValidName(t *testing.T) {
 		}
 	}
 }
+
+func TestNewSlugsHaveLongSuffixAndOldSlugsStayValid(t *testing.T) {
+	if SuffixLen < 10 {
+		t.Fatalf("SuffixLen = %d, want >= 10", SuffixLen)
+	}
+	long := NewName(strings.Repeat("word ", 40))
+	if !ValidName(long) || len(long) > maxSlugLen {
+		t.Fatalf("new long-title name %q invalid or too long", long)
+	}
+	if !ValidName("rawkoon-audiobooks-new-feature-y6r3") || !ValidName("demo-1234") {
+		t.Fatal("old 4-char slugs must stay valid")
+	}
+}

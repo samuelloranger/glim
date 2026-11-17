@@ -16,9 +16,10 @@ import (
 // the preview's password: glim_unlock_<slug>.
 const UnlockCookiePrefix = "glim_unlock_"
 
-// maxUnlockAttempts caps password attempts per preview within unlockWindow no
-// matter which client addresses they come from, so rotating addresses cannot
-// buy unlimited guesses on one preview.
+// maxUnlockAttempts caps how many distinct client addresses may guess a
+// preview's password within unlockWindow. Each address is throttled on its own
+// first, so one client cannot lock the others out, and rotating addresses
+// cannot buy unlimited guesses on one preview.
 const (
 	maxUnlockAttempts = 30
 	unlockWindow      = 15 * time.Minute
@@ -105,10 +106,10 @@ func attemptUnlock(w http.ResponseWriter, r *http.Request, slug string, m store.
 	capKey := "unlock\x00" + slug
 	// Both limits are reserved before the password is checked, so concurrent
 	// guesses cannot all pass them. A blocked attempt is not counted.
-	wait := u.Limiter.ReserveWindow(capKey, maxUnlockAttempts, unlockWindow)
+	wait := u.Limiter.Reserve(key, ip)
 	if wait == 0 {
-		if wait = u.Limiter.Reserve(key, ip); wait > 0 {
-			u.Limiter.ReleaseWindow(capKey)
+		if wait = u.Limiter.ReserveDistinct(capKey, ip, maxUnlockAttempts, unlockWindow); wait > 0 {
+			u.Limiter.Release(key, ip)
 		}
 	}
 	if wait > 0 {
@@ -122,7 +123,7 @@ func attemptUnlock(w http.ResponseWriter, r *http.Request, slug string, m store.
 		writeLockPage(w, r, base, http.StatusUnauthorized, "Wrong password.")
 		return
 	}
-	u.Limiter.ReleaseWindow(capKey)
+	u.Limiter.ReleaseDistinct(capKey, ip)
 	u.Limiter.Release(key, ip)
 	u.Limiter.Succeed(key)
 	setUnlockCookie(w, slug, m, u)

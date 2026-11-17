@@ -18,7 +18,7 @@ const LivePathPrefix = "/_glim/live/"
 
 // Live serves GET /_glim/live/<slug>, a Server-Sent Events stream that tells
 // an open preview tab when its preview was republished ("changed") or removed
-// or expired ("gone"). It carries no content, needs no cookie and sets
+// or expired ("gone"). It carries no content, needs no cookie (locked previews need the unlock or owner cookie) and sets
 // Access-Control-Allow-Origin: * because previews run in an opaque origin.
 type Live struct {
 	st *store.Store
@@ -28,6 +28,13 @@ type Live struct {
 	// MaxTotal and MaxPerIP cap concurrent streams; beyond them the endpoint
 	// answers 429.
 	MaxTotal, MaxPerIP int
+	// Views and Unlock gate streams of password-locked previews: only the
+	// owner or a visitor holding the unlock cookie gets one, so the stream
+	// cannot be used to probe a locked preview. Browsers do not send cookies
+	// on a sandboxed preview's EventSource, so locked previews get no reload
+	// script (see previewHandler).
+	Views  *Views
+	Unlock *Unlock
 
 	mu    sync.Mutex
 	total int
@@ -83,8 +90,13 @@ func (l *Live) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, ok := l.st.Live(slug); !ok {
+	m, ok := l.st.Live(slug)
+	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	if m.Locked() && !l.Views.owner(r) && !l.Unlock.valid(r, slug, m.PasswordHash) {
+		http.Error(w, "password required", http.StatusUnauthorized)
 		return
 	}
 	fl, ok := w.(http.Flusher)
