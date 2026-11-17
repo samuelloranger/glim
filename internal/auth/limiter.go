@@ -31,6 +31,9 @@ type Limiter struct {
 	ips   map[string][]time.Time
 	// caps holds the sliding windows behind ReserveWindow, keyed by caller.
 	caps map[string][]time.Time
+	// distinct holds the per-key sets of recently active ids behind
+	// ReserveDistinct.
+	distinct map[string]map[string]time.Time
 	// lastSweep is when idle entries were last evicted; see maybeSweep.
 	lastSweep time.Time
 }
@@ -39,7 +42,7 @@ func NewLimiter(now func() time.Time) *Limiter {
 	if now == nil {
 		now = time.Now
 	}
-	return &Limiter{now: now, users: map[string]*userFails{}, ips: map[string][]time.Time{}, caps: map[string][]time.Time{}}
+	return &Limiter{now: now, users: map[string]*userFails{}, ips: map[string][]time.Time{}, caps: map[string][]time.Time{}, distinct: map[string]map[string]time.Time{}}
 }
 
 // Check reports how long the caller must wait, without counting an attempt.
@@ -119,6 +122,47 @@ func (l *Limiter) ReleaseWindow(key string) {
 		l.caps[key] = hits[:len(hits)-1]
 	} else {
 		delete(l.caps, key)
+	}
+}
+
+// ReserveDistinct admits id under key unless limit other ids were active in
+// the window. An id already in the set is always admitted (and refreshed), so
+// one id repeating itself cannot fill the set and shut the others out; only
+// limit distinct ids can. It returns the wait until a slot frees, or 0.
+func (l *Limiter) ReserveDistinct(key, id string, limit int, window time.Duration) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	l.maybeSweep(now)
+	set := l.distinct[key]
+	var oldest time.Time
+	for k, t := range set {
+		if now.Sub(t) >= window {
+			delete(set, k)
+		} else if oldest.IsZero() || t.Before(oldest) {
+			oldest = t
+		}
+	}
+	if _, ok := set[id]; !ok && len(set) >= limit {
+		return oldest.Add(window).Sub(now)
+	}
+	if set == nil {
+		set = map[string]time.Time{}
+		l.distinct[key] = set
+	}
+	set[id] = now
+	return 0
+}
+
+// ReleaseDistinct drops id from key's set, e.g. after it proved itself.
+func (l *Limiter) ReleaseDistinct(key, id string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if set := l.distinct[key]; set != nil {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(l.distinct, key)
+		}
 	}
 }
 
@@ -227,6 +271,16 @@ func (l *Limiter) maybeSweep(now time.Time) {
 	}
 	// Window caps are pruned lazily on use; drop keys idle past the horizon so
 	// abandoned slugs don't accumulate.
+	for k, set := range l.distinct {
+		for id, t := range set {
+			if now.Sub(t) >= userIdleHorizon {
+				delete(set, id)
+			}
+		}
+		if len(set) == 0 {
+			delete(l.distinct, k)
+		}
+	}
 	for k, hits := range l.caps {
 		if len(hits) == 0 || now.Sub(hits[len(hits)-1]) >= userIdleHorizon {
 			delete(l.caps, k)

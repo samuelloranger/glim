@@ -2,8 +2,10 @@ package serve
 
 import (
 	"bufio"
+	"github.com/samuelloranger/glim/internal/auth"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -267,4 +269,41 @@ wait:
 	}
 	publish(t, st, "demo-1234", map[string]string{"index.html": "<html><body>v2</body></html>"}, 2*time.Hour)
 	waitFor(t, ch, "event: changed")
+}
+
+func TestLiveRefusesLockedPreviewWithoutCookie(t *testing.T) {
+	st := store.New(t.TempDir(), "https://glim.example.com")
+	src := t.TempDir()
+	writeTestFile(t, filepath.Join(src, "index.html"), "<html>x</html>")
+	if _, err := st.PublishLocked(src, "t", "", "", time.Hour, "locked-1234", hashFor(t, "pw-pw-pw")); err != nil {
+		t.Fatal(err)
+	}
+	db, err := auth.Open(filepath.Join(t.TempDir(), "glim.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	u := &Unlock{Token: db.UnlockToken, Limiter: auth.NewLimiter(nil)}
+	srv := httptest.NewServer(NewRouter(Options{Store: st, LiveReload: true, Unlock: u, Views: &Views{IsOwner: db.IsOwnerToken}}))
+	t.Cleanup(srv.Close)
+
+	resp := openLive(t, srv, LivePathPrefix+"locked-1234?v=guess")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no cookie = %d, want 401", resp.StatusCode)
+	}
+	m, err := st.Get("locked-1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest("GET", srv.URL+LivePathPrefix+"locked-1234", nil)
+	req.AddCookie(&http.Cookie{Name: UnlockCookiePrefix + "locked-1234", Value: u.token("locked-1234", m.PasswordHash)})
+	r2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusOK {
+		t.Fatalf("with unlock cookie = %d, want 200", r2.StatusCode)
+	}
 }

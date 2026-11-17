@@ -35,7 +35,7 @@ Or build from source: `go build -o glim .`
 ```sh
 glim config --domain https://glim.example.com    # optional; omit for localhost links
 glim serve &                                     # run the preview server
-glim report.html --title "Diff review"           # -> https://glim.example.com/diff-review-a1b2/
+glim report.html --title "Diff review"           # -> https://glim.example.com/diff-review-a1b2c3d4e5/
 ```
 
 Without a domain, links are `http://127.0.0.1:PORT/...`. `--local` auto-starts the

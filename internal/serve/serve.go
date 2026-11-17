@@ -116,7 +116,7 @@ func previewHandler(st *store.Store, views *Views, unlock *Unlock, live, selfFet
 				now = st.Now()
 			}
 			body := ""
-			if live && wantsLive(r) {
+			if live && wantsLive(r) && !m.Locked() {
 				v, _ := liveVersion(st, slug)
 				body = liveScript(base + LivePathPrefix + slug + "?v=" + v)
 			}
@@ -231,6 +231,9 @@ func NewRouter(o Options) http.Handler {
 	live := o.Live
 	if o.LiveReload && live == nil {
 		live = NewLive(o.Store)
+	}
+	if live != nil {
+		live.Views, live.Unlock = o.Views, o.Unlock
 	}
 	zone := func(h http.Handler, w http.ResponseWriter, r *http.Request) {
 		if h == nil {

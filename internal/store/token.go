@@ -8,7 +8,9 @@ import (
 
 const suffixAlphabet = "abcdefghijkmnpqrstuvwxyz23456789"
 
-const SuffixLen = 4
+// SuffixLen is the random suffix length of new slugs (~50 bits). Slugs made
+// with the older 4-character suffix remain valid: ValidName checks shape only.
+const SuffixLen = 10
 
 const maxSlugLen = 60
 

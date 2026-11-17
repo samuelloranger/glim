@@ -191,3 +191,25 @@ func TestLimiterReserveWindow(t *testing.T) {
 		t.Fatalf("after window = %v", w)
 	}
 }
+
+func TestLimiterReserveDistinct(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	l := NewLimiter(c.now)
+	for _, id := range []string{"a", "b"} {
+		if w := l.ReserveDistinct("k", id, 2, time.Minute); w != 0 {
+			t.Fatalf("%s blocked: %v", id, w)
+		}
+	}
+	for i := 0; i < 10; i++ { // a known id repeating never needs a new slot
+		if w := l.ReserveDistinct("k", "a", 2, time.Minute); w != 0 {
+			t.Fatalf("repeat blocked: %v", w)
+		}
+	}
+	if w := l.ReserveDistinct("k", "c", 2, time.Minute); w <= 0 {
+		t.Fatal("third distinct id admitted")
+	}
+	l.ReleaseDistinct("k", "a")
+	if w := l.ReserveDistinct("k", "c", 2, time.Minute); w != 0 {
+		t.Fatalf("after release = %v", w)
+	}
+}
