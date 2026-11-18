@@ -31,6 +31,9 @@ type Limiter struct {
 	ips   map[string][]time.Time
 	// caps holds the sliding windows behind ReserveWindow, keyed by caller.
 	caps map[string][]time.Time
+	// capWin is each caps key's window, so the sweep can drop a key once its
+	// newest hit is older than that window.
+	capWin map[string]time.Duration
 	// distinct holds the per-key sets of recently active ids behind
 	// ReserveDistinct.
 	distinct map[string]map[string]time.Time
@@ -42,7 +45,7 @@ func NewLimiter(now func() time.Time) *Limiter {
 	if now == nil {
 		now = time.Now
 	}
-	return &Limiter{now: now, users: map[string]*userFails{}, ips: map[string][]time.Time{}, caps: map[string][]time.Time{}, distinct: map[string]map[string]time.Time{}}
+	return &Limiter{now: now, users: map[string]*userFails{}, ips: map[string][]time.Time{}, caps: map[string][]time.Time{}, capWin: map[string]time.Duration{}, distinct: map[string]map[string]time.Time{}}
 }
 
 // Check reports how long the caller must wait, without counting an attempt.
@@ -111,6 +114,7 @@ func (l *Limiter) ReserveWindow(key string, limit int, window time.Duration) tim
 		return hits[len(hits)-limit].Add(window).Sub(now)
 	}
 	l.caps[key] = append(hits, now)
+	l.capWin[key] = window
 	return 0
 }
 
@@ -122,6 +126,7 @@ func (l *Limiter) ReleaseWindow(key string) {
 		l.caps[key] = hits[:len(hits)-1]
 	} else {
 		delete(l.caps, key)
+		delete(l.capWin, key)
 	}
 }
 
@@ -282,8 +287,10 @@ func (l *Limiter) maybeSweep(now time.Time) {
 		}
 	}
 	for k, hits := range l.caps {
-		if len(hits) == 0 || now.Sub(hits[len(hits)-1]) >= userIdleHorizon {
+		// Hits older than the key's own window no longer count, so the key is idle.
+		if len(hits) == 0 || now.Sub(hits[len(hits)-1]) >= l.capWin[k] {
 			delete(l.caps, k)
+			delete(l.capWin, k)
 		}
 	}
 }

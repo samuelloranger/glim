@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -236,6 +237,20 @@ const (
 	getWindow = time.Minute
 )
 
+// getKey keys IPv6 clients on their /64 (a host owns the whole prefix, so
+// rotating addresses inside it must not buy more requests); IPv4, including
+// IPv4-mapped IPv6, keys on the address.
+func getKey(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	if a = a.Unmap(); a.Is6() {
+		return netip.PrefixFrom(a, 64).Masked().String()
+	}
+	return a.String()
+}
+
 // limitGets answers 429 with Retry-After once a client address exceeds
 // getLimit GETs/HEADs per getWindow. Loopback and private clients (the owner,
 // or a proxy with no forwarded address) are never throttled.
@@ -243,7 +258,7 @@ func limitGets(l *auth.Limiter, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			if ip := auth.ClientIP(r); !auth.TrustedPeer(ip) {
-				if wait := l.ReserveWindow("get\x00"+ip, getLimit, getWindow); wait > 0 {
+				if wait := l.ReserveWindow("get\x00"+getKey(ip), getLimit, getWindow); wait > 0 {
 					w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
 					http.Error(w, "too many requests", http.StatusTooManyRequests)
 					return

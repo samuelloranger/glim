@@ -213,3 +213,22 @@ func TestLimiterReserveDistinct(t *testing.T) {
 		t.Fatalf("after release = %v", w)
 	}
 }
+
+func TestReserveWindowSweepsIdleKeys(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	l := NewLimiter(c.now)
+	l.Check("x", "y") // arms the sweep timer
+	l.ReserveWindow("short", 5, time.Minute)
+	l.ReserveWindow("long", 5, time.Hour)
+	c.advance(sweepEvery + time.Second)
+	l.Check("x", "y")
+	if _, ok := l.caps["short"]; ok {
+		t.Fatal("1m-window key survived past its window")
+	}
+	if _, ok := l.caps["long"]; !ok {
+		t.Fatal("key inside its window was swept")
+	}
+	if _, ok := l.capWin["short"]; ok {
+		t.Fatal("window entry leaked")
+	}
+}

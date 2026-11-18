@@ -210,3 +210,5 @@ Public preview requests (pages, assets and live-reload streams) are limited to
 answers `429` with a `Retry-After` header. The address is the direct peer, or
 the forwarded client when the peer is a loopback or private reverse proxy.
 Loopback and private-network clients are not throttled.
+
+A reverse proxy must set `X-Forwarded-For` (Caddy does by default); otherwise all traffic arrives from a private peer and is exempt from the limit.
