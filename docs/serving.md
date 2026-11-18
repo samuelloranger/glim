@@ -202,3 +202,13 @@ firewall) for anything you would not put on the open web.
 
 The dashboard itself requires an account, but preview links stay public by
 design. Anyone with a link can open that preview.
+
+## Rate limiting
+
+Public preview requests (pages, assets and live-reload streams) are limited to
+300 GET/HEAD requests per minute per client address; beyond that the server
+answers `429` with a `Retry-After` header. The address is the direct peer, or
+the forwarded client when the peer is a loopback or private reverse proxy.
+Loopback and private-network clients are not throttled.
+
+A reverse proxy must set `X-Forwarded-For` (Caddy does by default); otherwise all traffic arrives from a private peer and is exempt from the limit.
