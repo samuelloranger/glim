@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samuelloranger/glim/internal/auth"
 	"github.com/samuelloranger/glim/internal/store"
 )
 
@@ -224,16 +225,51 @@ type Options struct {
 	// model configured to describe previews).
 	Listen bool
 	Live   *Live // optional: overrides the default stream settings (tests)
+	// GetLimiter backs the per-client GET limit; nil creates a private one.
+	GetLimiter *auth.Limiter
+}
+
+const (
+	// getLimit and getWindow bound public preview GETs per client address: far
+	// above what an asset-heavy page fires, far below a scraping flood.
+	getLimit  = 300
+	getWindow = time.Minute
+)
+
+// limitGets answers 429 with Retry-After once a client address exceeds
+// getLimit GETs/HEADs per getWindow. Loopback and private clients (the owner,
+// or a proxy with no forwarded address) are never throttled.
+func limitGets(l *auth.Limiter, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			if ip := auth.ClientIP(r); !auth.TrustedPeer(ip) {
+				if wait := l.ReserveWindow("get\x00"+ip, getLimit, getWindow); wait > 0 {
+					w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
+					http.Error(w, "too many requests", http.StatusTooManyRequests)
+					return
+				}
+			}
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 func NewRouter(o Options) http.Handler {
-	previews := previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload, !o.NoSelfFetch, !o.NoHeader, o.Listen)
+	gets := o.GetLimiter
+	if gets == nil {
+		gets = auth.NewLimiter(nil)
+	}
+	previews := limitGets(gets, previewHandler(o.Store, o.Views, o.Unlock, o.LiveReload, !o.NoSelfFetch, !o.NoHeader, o.Listen))
 	live := o.Live
 	if o.LiveReload && live == nil {
 		live = NewLive(o.Store)
 	}
 	if live != nil {
 		live.Views, live.Unlock = o.Views, o.Unlock
+	}
+	var liveH http.Handler
+	if live != nil {
+		liveH = limitGets(gets, live)
 	}
 	zone := func(h http.Handler, w http.ResponseWriter, r *http.Request) {
 		if h == nil {
@@ -253,7 +289,7 @@ func NewRouter(o Options) http.Handler {
 			w.Header().Set("Cache-Control", "public, max-age=86400")
 			http.ServeContent(w, r, "og.png", time.Time{}, bytes.NewReader(ogImage()))
 		case live != nil && strings.HasPrefix(p, LivePathPrefix):
-			live.ServeHTTP(w, r)
+			liveH.ServeHTTP(w, r)
 		case strings.HasPrefix(p, "/_glim/api/"):
 			zone(o.API, w, r)
 		case p == "/" || strings.HasPrefix(p, "/_glim/"):
